@@ -2,19 +2,20 @@
 Last updated: 2026-11-24 by Copilot
 
 ## Next Step
-Step 02 - Prisma schema A: users, units, items, customers, suppliers, settings
+Step 03 - Prisma schema B: BOM, purchases, production runs, stock ledger, audit log
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install` and `npm --prefix frontend install`.
 - Start PostgreSQL: `npm run db:up`; stop it with `npm run db:down`.
 - Start the API and UI in separate terminals: `npm run dev:backend` and `npm run dev:frontend`.
 - Test backend: `npm test`; build frontend: `npm --prefix frontend run build`.
+- Format, validate, and migrate Prisma schema from `backend/`: `npx prisma format`, `npx prisma validate`, `npx prisma migrate dev --name init_masters`.
 - Copy `backend/.env.example` to `backend/.env` and set a private JWT secret before use.
 
 ## Step checklist (tick when DONE and VERIFIED)
 ### Phase 1 - Foundation
 [x] 01 Monorepo scaffold, Docker Postgres, health check
-[ ] 02 Prisma schema A: users, units, items, customers, suppliers, settings
+[x] 02 Prisma schema A: users, units, items, customers, suppliers, settings
 [ ] 03 Prisma schema B: BOM, purchases, production runs, stock ledger, audit log
 [ ] 04 Prisma schema C: orders, invoices, dispatch, payments, credit notes, counters
 [ ] 05 Money, GST, units and variance libraries + unit tests
@@ -85,11 +86,14 @@ Step 02 - Prisma schema A: users, units, items, customers, suppliers, settings
 - Step 01 (2026-11-24): Added root npm scripts/ignore rules, Postgres Compose service, Node/Express/Prisma API and health test, and React/Vite/Tailwind UI with API status. Added package manifests/lockfiles and backend env example/local env.
 - Verified: Prisma client generation; `npm test`; frontend production build; `docker compose config --quiet`; Compose database health. Health endpoint returned `db:false` on this machine because a pre-existing Windows PostgreSQL process owns host port 5432.
 - Decision/assumption: The repository root is the app root. The supplied guidance and this progress file are under `starter-kit/`, so the tracker stays there; no guidance files were moved.
+- Step 02 (2026-11-24): Added identity/master-data enums and models, indexes, relation names, initial migration, and Mermaid data-model note. Prisma format/validate and backend tests passed; migration applied to the Compose database over its Docker network.
+- Limitation: Direct host migration hit the pre-existing PostgreSQL on port 5432; Prisma Client generation is blocked while a running backend process holds its Windows engine DLL.
 
 ## File map (path - purpose)
 - `package.json`, `.gitignore`, `docker-compose.yml` - root scripts, ignore rules, and PostgreSQL service.
-- `backend/` - Node ES-module API, validated configuration, Prisma client/schema, health route, and test.
+- `backend/` - Node ES-module API, validated configuration, Prisma client/schema/migrations, health route, and test.
 - `frontend/` - Vite/React UI, Tailwind v3/PostCSS, API client, and `/api` proxy.
+- `docs/DATA_MODEL.md` - Mermaid ER diagram and integer money/quantity design rationale.
 - `starter-kit/docs/` - project context, step prompts, and progress tracker.
 
 ## API endpoints (METHOD path - roles - purpose)
@@ -104,6 +108,7 @@ Step 02 - Prisma schema A: users, units, items, customers, suppliers, settings
 ## Known issues / TODO
 - Port 5432 is also occupied by a pre-existing Windows PostgreSQL process on this machine. Compose's database is healthy internally, but the host API connects to the other process; free port 5432 before expecting `db:true`.
 - `npm install` reported 13 backend and 4 frontend dependency audit findings; review before deployment.
+- Regenerate Prisma Client after stopping the running backend process that holds `query_engine-windows.dll.node`.
 
 ## Benchmark status (stage: PASS/FAIL/SKIPPED)
 (not started)

@@ -6,3 +6,140 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+enum Role {
+  SALESMAN
+  ADMIN
+  PRODUCTION
+  ACCOUNTANT
+  OWNER
+}
+
+enum ItemType {
+  RAW
+  PACKAGING
+  FINISHED
+}
+
+enum UnitDimension {
+  MASS
+  VOLUME
+  COUNT
+}
+
+enum CustomerType {
+  RETAILER
+  DISTRIBUTOR
+}
+
+model User {
+  id                Int        @id @default(autoincrement())
+  name              String
+  email             String     @unique
+  /// Store only a one-way password hash, never a plain-text password.
+  passwordHash      String
+  /// Role used to authorize access to application functions.
+  role              Role
+  isActive          Boolean    @default(true)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  assignedCustomers Customer[] @relation("AssignedSalesman")
+}
+
+model Unit {
+  id                 Int           @id @default(autoincrement())
+  code               String        @unique
+  name               String
+  /// Physical dimension used to keep unit conversions compatible.
+  dimension          UnitDimension
+  /// Number of base units represented by one unit of this code.
+  baseFactor         Int
+  itemsAsBaseUnit    Item[]        @relation("ItemBaseUnit")
+  itemsAsDisplayUnit Item[]        @relation("ItemDisplayUnit")
+}
+
+model Item {
+  id                Int             @id @default(autoincrement())
+  code              String          @unique
+  name              String
+  type              ItemType
+  /// Unit in which stock quantities are stored as integers.
+  baseUnitId        Int
+  baseUnit          Unit            @relation("ItemBaseUnit", fields: [baseUnitId], references: [id])
+  /// Unit used to display quantities to people.
+  displayUnitId     Int
+  displayUnit       Unit            @relation("ItemDisplayUnit", fields: [displayUnitId], references: [id])
+  /// Harmonized System classification used on GST documents.
+  hsnCode           String?
+  /// GST rate in basis points (for example, 5% is 500).
+  gstRateBp         Int             @default(0)
+  /// Number of packets in a carton, for finished goods sold by packet.
+  packsPerCarton    Int?
+  /// Default list price in integer paise.
+  sellingPricePaise Int?
+  /// Reorder threshold in integer base units.
+  reorderLevelBase  Int?
+  isActive          Boolean         @default(true)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  customerPrices    CustomerPrice[]
+
+  @@index([baseUnitId])
+  @@index([displayUnitId])
+}
+
+model Customer {
+  id                 Int             @id @default(autoincrement())
+  name               String
+  type               CustomerType
+  /// GST registration number, when registered.
+  gstin              String?
+  /// GST state code, such as 33 for Tamil Nadu or 29 for Karnataka.
+  stateCode          String
+  stateName          String
+  address            String?
+  phone              String?
+  /// Optional user responsible for this customer's sales.
+  assignedSalesmanId Int?
+  assignedSalesman   User?           @relation("AssignedSalesman", fields: [assignedSalesmanId], references: [id])
+  isActive           Boolean         @default(true)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  prices             CustomerPrice[]
+
+  @@index([assignedSalesmanId])
+}
+
+model Supplier {
+  id        Int      @id @default(autoincrement())
+  name      String
+  /// GST registration number, when registered.
+  gstin     String?
+  /// GST state code, when the supplier's state is known.
+  stateCode String?
+  phone     String?
+  address   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model CustomerPrice {
+  id         Int      @id @default(autoincrement())
+  customerId Int
+  customer   Customer @relation(fields: [customerId], references: [id])
+  itemId     Int
+  item       Item     @relation(fields: [itemId], references: [id])
+  /// Customer-specific selling price in integer paise.
+  pricePaise Int
+
+  @@unique([customerId, itemId])
+  @@index([customerId])
+  @@index([itemId])
+}
+
+model Setting {
+  /// Stable setting key, such as COMPANY_NAME or FY_START_MONTH.
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
