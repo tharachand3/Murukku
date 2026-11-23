@@ -6,10 +6,10 @@ Step 03 - Prisma schema B: BOM, purchases, production runs, stock ledger, audit 
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install` and `npm --prefix frontend install`.
-- Start PostgreSQL: `npm run db:up`; stop it with `npm run db:down`.
+- Start PostgreSQL on host port 5433: `npm run db:up`; stop it with `npm run db:down`.
 - Start the API and UI in separate terminals: `npm run dev:backend` and `npm run dev:frontend`.
 - Test backend: `npm test`; build frontend: `npm --prefix frontend run build`.
-- Format, validate, and migrate Prisma schema from `backend/`: `npx prisma format`, `npx prisma validate`, `npx prisma migrate dev --name init_masters`.
+- Run Prisma commands from `backend/`: `npx prisma format`, `npx prisma validate`, `npx prisma migrate status`.
 - Copy `backend/.env.example` to `backend/.env` and set a private JWT secret before use.
 
 ## Step checklist (tick when DONE and VERIFIED)
@@ -84,29 +84,30 @@ Step 03 - Prisma schema B: BOM, purchases, production runs, stock ledger, audit 
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
 - Step 01 (2026-11-24): Added root npm scripts/ignore rules, Postgres Compose service, Node/Express/Prisma API and health test, and React/Vite/Tailwind UI with API status. Added package manifests/lockfiles and backend env example/local env.
-- Verified: Prisma client generation; `npm test`; frontend production build; `docker compose config --quiet`; Compose database health. Health endpoint returned `db:false` on this machine because a pre-existing Windows PostgreSQL process owns host port 5432.
-- Decision/assumption: The repository root is the app root. The supplied guidance and this progress file are under `starter-kit/`, so the tracker stays there; no guidance files were moved.
+- Verified: Prisma client generation; `npm test`; frontend production build; `docker compose config --quiet`; Compose database health. The initial host mapping collided with the Windows PostgreSQL service on port 5432; Compose now uses host port 5433.
+- Initial layout assumption (resolved): supplied guidance was under `starter-kit/`; housekeeping moved it and the project docs to the repository root.
 - Step 02 (2026-11-24): Added identity/master-data enums and models, indexes, relation names, initial migration, and Mermaid data-model note. Prisma format/validate and backend tests passed; migration applied to the Compose database over its Docker network.
 - Limitation: Direct host migration hit the pre-existing PostgreSQL on port 5432; Prisma Client generation is blocked while a running backend process holds its Windows engine DLL.
+- Housekeeping (2026-11-24): Moved `AGENTS.md` and `starter-kit/docs/*` into the repository root locations, preserving the existing `docs/DATA_MODEL.md`; configured PostgreSQL host port 5433.
+- Verified `npm run db:up`, `npx prisma migrate status` (up to date), and `npm test`; `npx prisma generate` still fails because a running process locks the Windows query-engine DLL.
 
 ## File map (path - purpose)
+- `AGENTS.md` - repository instructions.
 - `package.json`, `.gitignore`, `docker-compose.yml` - root scripts, ignore rules, and PostgreSQL service.
 - `backend/` - Node ES-module API, validated configuration, Prisma client/schema/migrations, health route, and test.
 - `frontend/` - Vite/React UI, Tailwind v3/PostCSS, API client, and `/api` proxy.
-- `docs/DATA_MODEL.md` - Mermaid ER diagram and integer money/quantity design rationale.
-- `starter-kit/docs/` - project context, step prompts, and progress tracker.
+- `docs/` - project context, progress tracker, step prompts, and Mermaid data-model note.
 
 ## API endpoints (METHOD path - roles - purpose)
 - `GET /api/health` - public - API/database status and ISO timestamp; HTTP 200 if the database query fails.
 
 ## Decisions (deviations from AI_CONTEXT.md and why)
-- None.
+- DB host port is 5433 because the Windows PostgreSQL service occupies 5432
 
 ## Assumptions (copy into README at the end)
-- Project source belongs at the Git repository root; the provided guidance files remain under `starter-kit/`.
+- Project source and project guidance live at the Git repository root.
 
 ## Known issues / TODO
-- Port 5432 is also occupied by a pre-existing Windows PostgreSQL process on this machine. Compose's database is healthy internally, but the host API connects to the other process; free port 5432 before expecting `db:true`.
 - `npm install` reported 13 backend and 4 frontend dependency audit findings; review before deployment.
 - Regenerate Prisma Client after stopping the running backend process that holds `query_engine-windows.dll.node`.
 
