@@ -2,7 +2,7 @@
 Last updated: 2026-11-24 by Copilot
 
 ## Next Step
-Step 03 - Apply and verify Prisma schema B migration (`ledger_bom_production`); the database at localhost:5433 is currently unavailable.
+Step 04 - Prisma schema C: orders, invoices, dispatch, payments, credit notes, counters
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install` and `npm --prefix frontend install`.
@@ -16,7 +16,7 @@ Step 03 - Apply and verify Prisma schema B migration (`ledger_bom_production`); 
 ### Phase 1 - Foundation
 [x] 01 Monorepo scaffold, Docker Postgres, health check
 [x] 02 Prisma schema A: users, units, items, customers, suppliers, settings
-[ ] 03 Prisma schema B: BOM, purchases, production runs, stock ledger, audit log
+[x] 03 Prisma schema B: BOM, purchases, production runs, stock ledger, audit log
 [ ] 04 Prisma schema C: orders, invoices, dispatch, payments, credit notes, counters
 [ ] 05 Money, GST, units and variance libraries + unit tests
 [ ] 06 Seed script with the section 5 benchmark master data
@@ -83,7 +83,7 @@ Step 03 - Apply and verify Prisma schema B migration (`ledger_bom_production`); 
 [ ] 60 Demo video script, interview rehearsal sheet, final audit
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
-- Step 03 (2026-11-24): Added BOM, purchase, production, stock-ledger, and audit-log Prisma models plus the Mermaid model and six-line explanation. Prisma format and validate passed; migration is blocked because PostgreSQL at localhost:5433 and Docker are unavailable. Checklist remains open until migration applies; no design deviations or new assumptions.
+- Step 03 (2026-11-24): Added BOM, purchase, production, stock-ledger, and audit-log models plus the Mermaid model and six-line explanation. Migration `20261124102201_ledger_bom_production` is applied and Prisma Client generated. `npx prisma migrate status` reports up to date; `npm test` passes (1 test).
 - Step 01 (2026-11-24): Added root npm scripts/ignore rules, Postgres Compose service, Node/Express/Prisma API and health test, and React/Vite/Tailwind UI with API status. Added package manifests/lockfiles and backend env example/local env.
 - Verified: Prisma client generation; `npm test`; frontend production build; `docker compose config --quiet`; Compose database health. The initial host mapping collided with the Windows PostgreSQL service on port 5432; Compose now uses host port 5433.
 - Initial layout assumption (resolved): supplied guidance was under `starter-kit/`; housekeeping moved it and the project docs to the repository root.
@@ -111,8 +111,6 @@ Step 03 - Apply and verify Prisma schema B migration (`ledger_bom_production`); 
 
 ## Known issues / TODO
 - `npm install` reported 13 backend and 4 frontend dependency audit findings; review before deployment.
-- Regenerate Prisma Client after stopping the running backend process that holds `query_engine-windows.dll.node`.
-- Step 03 migration not applied: Docker daemon is unavailable and no PostgreSQL server listens on localhost:5433. Start the configured database and rerun `cd backend; npx prisma migrate dev --name ledger_bom_production`.
 
 ## Benchmark status (stage: PASS/FAIL/SKIPPED)
 (not started)
