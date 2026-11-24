@@ -2,7 +2,7 @@
 Last updated: 2026-11-24 by Copilot
 
 ## Next Step
-Step 07 - Login, JWT and role middleware
+Step 08 - Validation, error handling and audit-log helper
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install` and `npm --prefix frontend install`.
@@ -11,6 +11,17 @@ Step 07 - Login, JWT and role middleware
 - Test backend, including pure library unit tests: `npm test`; build frontend: `npm --prefix frontend run build`.
 - From `backend/`, load benchmark data with `npm run seed` (or `npx prisma db seed`); rerun safely with no duplicate records.
 - From `backend/`, `npm run seed:reset` clears application tables and reseeds (destructive; refuses `NODE_ENV=production`); `npm run balances` prints ledger-derived stock in display units.
+- Demo logins (password for every account: `Demo@123`):
+
+  | Role | Email |
+  | --- | --- |
+  | ADMIN | `admin@demo.com` |
+  | PRODUCTION | `production@demo.com` |
+  | SALESMAN | `salesman.a@demo.com` |
+  | SALESMAN | `salesman.b@demo.com` |
+  | ACCOUNTANT | `accountant@demo.com` |
+  | OWNER | `owner@demo.com` |
+- Login with `POST /api/auth/login`, then send its token as `Authorization: Bearer <token>` to `GET /api/auth/me`.
 - Check library source for float parsing/formatting: from `backend/`, run `rg -n "parseFloat|toFixed" src/lib` (expect no matches).
 - Run Prisma commands from `backend/`: `npx prisma format`, `npx prisma validate`, `npx prisma migrate dev --name sales_loop`, `npx prisma migrate status`.
 - Copy `backend/.env.example` to `backend/.env` and set a private JWT secret before use.
@@ -23,7 +34,7 @@ Step 07 - Login, JWT and role middleware
 [x] 04 Prisma schema C: orders, invoices, dispatch, payments, credit notes, counters
 [x] 05 Money, GST, units and variance libraries + unit tests
 [x] 06 Seed script with the section 5 benchmark master data
-[ ] 07 Login, JWT and role middleware
+[x] 07 Login, JWT and role middleware
 [ ] 08 Validation, error handling and audit-log helper
 ### Phase 2 - Stock ledger and purchases
 [ ] 09 Ledger service (addMovement, balances, running ledger) + tests
@@ -86,6 +97,7 @@ Step 07 - Login, JWT and role middleware
 [ ] 60 Demo video script, interview rehearsal sheet, final audit
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
+- Step 07 (2026-11-24): Added JWT login, active-user authentication, role/capability middleware and test-only auth endpoints; added `jsonwebtoken`. Added Supertest coverage for login, invalid credentials, missing/deactivated/deleted users, role and capability checks. `npm test` passes (23); live demo login and `/api/auth/me` returned ADMIN successfully.
 - Step 06 (2026-11-24): Added `backend/prisma/seed.js`, `backend/scripts/reset-db.js`, and `backend/scripts/print-balances.js`; wired bcryptjs and npm/Prisma scripts. Verified balances, repeat seeding, password/assignment/BOM/opening values, production refusal, and expected record counts; `npm test` passes (16). Prisma 6 warns the requested seed config is deprecated for Prisma 7.
 - Step 05 (2026-11-24): Added `backend/src/lib/{money,gst,units,variance}.js` and four suites under `backend/tests/lib/`. `npm test` passes (16 tests); `rg -n "parseFloat|toFixed" src/lib` finds no matches. Assumption: `sumInvoice` lines contain taxable paise, GST basis points, and an inter-state flag.
 - Step 04 (2026-11-24): Added order, invoice, dispatch, payment, credit-note, and document-counter models; documented invoice snapshots and credit-note cancellation. Added migration `20261124103152_sales_loop`; format, validate, migrate, and Prisma Client generation succeeded. Decision: no round-off line; GST is computed per line, then summed. No APIs or seeds.
@@ -101,15 +113,20 @@ Step 07 - Login, JWT and role middleware
 ## File map (path - purpose)
 - `AGENTS.md` - repository instructions.
 - `package.json`, `.gitignore`, `docker-compose.yml` - root scripts, ignore rules, and PostgreSQL service.
-- `backend/` - Node ES-module API, Prisma client/schema/migrations, health route, pure money/GST/units/variance libraries, benchmark seed/reset/balance utilities, and tests.
+- `backend/` - Node ES-module API, Prisma client/schema/migrations, health/auth routes and middleware, pure money/GST/units/variance libraries, benchmark seed/reset/balance utilities, and tests.
 - `backend/prisma/seed.js` - idempotent units, settings, master data, demo users, BOM, and opening ledger movements.
 - `backend/scripts/` - production-guarded database reset/reseed and display-unit balance reporting.
-- `backend/src/lib/`, `backend/tests/lib/` - pure Decimal-backed business helpers and focused Vitest coverage.
+- `backend/src/config/permissions.js` - centralized role list and capability matrix.
+- `backend/src/services/authService.js`, `backend/src/middleware/auth.js`, `backend/src/routes/auth.js` - credential login, JWT issuance/verification, authorization checks, and auth endpoints.
+- `backend/src/lib/` - AppError and pure Decimal-backed business helpers; `backend/tests/` contains auth and library Vitest coverage.
 - `frontend/` - Vite/React UI, Tailwind v3/PostCSS, API client, and `/api` proxy.
 - `docs/` - project context, progress tracker, step prompts, and Mermaid data-model note, now including BOM/purchase/production/ledger/audit/sales entities and invoice/cancellation notes.
 
 ## API endpoints (METHOD path - roles - purpose)
 - `GET /api/health` - public - API/database status and ISO timestamp; HTTP 200 if the database query fails.
+- `POST /api/auth/login` - public - validate credentials and return a 12-hour JWT with the user summary.
+- `GET /api/auth/me` - any authenticated user - return the current active user loaded from the database.
+- `GET /api/_whoami`, `GET /api/_admin-only`, `GET /api/_approve-only` - test environment only - exercise authentication, role, and capability gates.
 - No endpoints added in Steps 03-04 (schema/documentation only).
 - Step 05 adds pure functions only; no endpoints.
 - Step 06 adds seed and maintenance scripts only; no endpoints.
@@ -117,6 +134,7 @@ Step 07 - Login, JWT and role middleware
 ## Decisions (deviations from AI_CONTEXT.md and why)
 - DB host port is 5433 because the Windows PostgreSQL service occupies 5432
 - No round-off line; GST is computed per invoice line and then summed.
+- Authentication reloads the account and role for every request, so deactivation, deletion, and role changes take effect without waiting for token expiry.
 
 ## Assumptions (copy into README at the end)
 - Project source and project guidance live at the Git repository root.
@@ -126,6 +144,7 @@ Step 07 - Login, JWT and role middleware
 
 ## Known issues / TODO
 - `npm install` reported 13 backend and 4 frontend dependency audit findings; review before deployment.
+- No refresh-token or logout endpoint yet; access tokens expire after 12 hours, and deactivated or deleted accounts are rejected on each request.
 - No Step 05-specific known issues.
 - Prisma 6 warns that the requested `package.json#prisma` seed configuration is deprecated in Prisma 7.
 
