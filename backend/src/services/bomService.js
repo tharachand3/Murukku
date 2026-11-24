@@ -1,5 +1,6 @@
 import { badRequest, conflict, notFound, unprocessable } from '../lib/errors.js';
 import { formatQty, toBase, UNITS } from '../lib/units.js';
+import { batchesFromIssue, planFromBatches, planFromTargetOutput } from '../lib/bomMath.js';
 import { prisma } from '../lib/prisma.js';
 import { writeAudit } from '../lib/audit.js';
 
@@ -251,6 +252,60 @@ export async function listBoms(db, { finishedItemId, active }) {
 
 export async function getBom(db, id) {
   return presentBom(await findBom(db, id));
+}
+
+export async function planBom(db, bomId, query) {
+  const bom = await findBom(db, bomId);
+  const hasBatches = query.batches !== undefined;
+  const hasTargetOutput = query.targetOutput !== undefined;
+  const hasIssueFields = ['itemId', 'qty', 'unit'].some(
+    (field) => query[field] !== undefined
+  );
+  const hasCompleteIssue = query.itemId !== undefined &&
+    query.qty !== undefined &&
+    query.unit !== undefined;
+  if (
+    Number(hasBatches) + Number(hasTargetOutput) + Number(hasIssueFields) !== 1 ||
+    (hasIssueFields && !hasCompleteIssue)
+  ) {
+    throw badRequest('Provide exactly one planning mode: batches, targetOutput, or itemId/qty/unit');
+  }
+
+  let planned;
+  try {
+    if (hasBatches) {
+      planned = planFromBatches(bom, query.batches);
+    } else if (hasTargetOutput) {
+      planned = planFromTargetOutput(bom, query.targetOutput);
+    } else {
+      const line = bom.lines.find(({ itemId }) => itemId === query.itemId);
+      if (!line) {
+        throw badRequest(`Item ${query.itemId} is not in this BOM`);
+      }
+      const issuedQty = convertQuantity(query.qty, query.unit, line.item);
+      planned = batchesFromIssue(bom, query.itemId, issuedQty);
+    }
+  } catch (error) {
+    if (error instanceof RangeError) {
+      throw badRequest(error.message);
+    }
+    throw error;
+  }
+
+  const linesByItemId = new Map(bom.lines.map((line) => [line.itemId, line]));
+  return {
+    batchCount: planned.batchCount.toString(),
+    plannedOutputQty: planned.plannedOutputQty,
+    lines: planned.lines.map((line) => {
+      const bomLine = linesByItemId.get(line.itemId);
+      return {
+        itemId: line.itemId,
+        itemName: bomLine.item.name,
+        plannedQty: line.plannedQty,
+        plannedQtyDisplay: formatQty(line.plannedQty, bomLine.item.displayUnit.code)
+      };
+    })
+  };
 }
 
 export async function createBom(userId, input) {

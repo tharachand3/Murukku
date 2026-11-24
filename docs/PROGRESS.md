@@ -2,7 +2,7 @@
 Last updated: 2026-11-24 by Copilot
 
 ## Next Step
-Step 16 - Planned-consumption calculator (scale BOM by batches) + tests
+Step 17 - Production run: start and issue materials
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install` and `npm --prefix frontend install`.
@@ -31,6 +31,7 @@ Step 16 - Planned-consumption calculator (scale BOM by batches) + tests
 - `GET /api/audit` requires ADMIN, ACCOUNTANT, or OWNER; supports entity/user/date filters and pagination (`limit` max 100).
 - Master data reads require authentication; ADMIN writes through `/api/items`, `/api/customers`, `/api/suppliers`, `/api/settings`, and `/api/users`. SALESMAN customer reads are limited to assigned customers.
 - BOM reads use `GET /api/boms` or `/api/boms/:id` with ADMIN, PRODUCTION, ACCOUNTANT, or OWNER; ADMIN/PRODUCTION can create, update, and clone. Line quantities are entered as decimal strings with a unit and stored in item base units.
+- `GET /api/boms/:id/plan` accepts exactly one of `?batches=2.5`, `?targetOutput=300`, or `?itemId=1&qty=20&unit=kg`; batch counts are limited to 100 and reported to four decimal places.
 - Check library source for float parsing/formatting: from `backend/`, run `rg -n "parseFloat|toFixed" src/lib` (expect no matches).
 - Run Prisma commands from `backend/`: `npx prisma format`, `npx prisma validate`, `npx prisma migrate dev`, `npx prisma migrate status`.
 - To check the append-only trigger, connect with `docker compose exec -it db psql -U oda -d oda` and run `UPDATE "StockMovement" SET "qtyChange" = 1;` (it must raise an error).
@@ -55,7 +56,7 @@ Step 16 - Planned-consumption calculator (scale BOM by batches) + tests
 [x] 14 Master data CRUD APIs (items, customers, suppliers, settings, users)
 ### Phase 3 - BOM and production (highest weight)
 [x] 15 BOM API (create, view, update)
-[ ] 16 Planned-consumption calculator (scale BOM by batches) + tests
+[x] 16 Planned-consumption calculator (scale BOM by batches) + tests
 [ ] 17 Production run: start and issue materials
 [ ] 18 Production run: complete with actual output, scrap, damaged
 [ ] 19 Variance engine and tolerance flags (per material and yield)
@@ -107,6 +108,7 @@ Step 16 - Planned-consumption calculator (scale BOM by batches) + tests
 [ ] 60 Demo video script, interview rehearsal sheet, final audit
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
+- Step 16 (2026-11-24): Added pure Decimal-based batch, target-output, and issued-material BOM planning with half-up integer base quantities, plus a role-gated plan endpoint for all three exclusive query modes. Pure and API tests pass; full `npm test` passes (84). Assumption: plan responses serialize batchCount as a decimal string to preserve precision.
 - Step 15 (2026-11-24): Added role-gated BOM list/detail/create/update/clone APIs, unit-to-base conversion, single-active versioning, and audit writes; used BOM edits create a new version. Added coverage for seeded recipe display, invalid types, history, cloning, and role denial. `npm test` passes (78); live production login showed the expected 200-yield recipe quantities.
 - Step 14 (2026-11-24): Added audited item, customer/price, supplier, settings, and ADMIN user APIs with Zod validation and role gates; salesman customer access is assignment-scoped. Added state-code validation and focused API tests. `npm test` passes (71 tests); no schema changes. Assumption: customer price PUT accepts `{ prices: [...] }` and upserts only the submitted items.
 - Step 13 (2026-11-24): Added the numbered StockAdjustment model/migration and documented its source traceability. Added role-gated adjustment create/list routes; IN/OUT append ledger rows at weighted-average rates and audit before/after balances transactionally. `npm test` passes (64); Prisma migration status is up to date.
@@ -143,6 +145,7 @@ Step 16 - Planned-consumption calculator (scale BOM by batches) + tests
 - `backend/src/services/purchaseService.js`, `backend/src/routes/purchases.js` - transactionally create/list/read purchases, record receipts through the ledger service, and return display quantities/amounts.
 - `backend/src/services/masterDataService.js`, `backend/src/routes/{items,customers,suppliers}.js` - audited item/customer/price/supplier CRUD and salesman-assignment visibility.
 - `backend/src/services/bomService.js`, `backend/src/routes/boms.js` - validated BOM reads, input conversion to base quantities, version-safe edits, and pack-size cloning.
+- `backend/src/lib/bomMath.js` - pure Decimal batch scaling, target-output and issue-based consumption planning.
 - `backend/src/services/settingsService.js`, `backend/src/routes/settings.js` - whitelist-validated settings reads/writes with transactional audit.
 - `backend/src/services/userService.js`, `backend/src/routes/users.js` - ADMIN user management, bcrypt password hashing/reset, and password-hash-safe responses.
 - `backend/src/lib/states.js` - supported Indian state-code/name map used by customer, supplier, and GSTIN validation.
@@ -153,6 +156,7 @@ Step 16 - Planned-consumption calculator (scale BOM by batches) + tests
 - `backend/src/routes/audit.js` - capability-protected, filtered and paginated audit log listing.
 - `backend/tests/helpers/db.js`, `tests/setup.js`, `vitest.config.js` - guarded `oda_test` database reset/seeding and Vitest isolation.
 - `backend/tests/` - master-data, adjustment and purchase API/costing, stock API, ledger, numbering/FY, auth, audit, middleware/error, and pure library Vitest coverage.
+- `backend/tests/lib/bomMath.test.js`, `backend/tests/boms.test.js` - pure planned-consumption calculations and BOM plan endpoint coverage.
 - `backend/prisma/migrations/20261124115051_ledger_append_only/` - database trigger preventing stock-movement updates and deletes.
 - `backend/prisma/migrations/20261124125050_stock_adjustment/` - numbered stock-adjustment source records and item/user relations.
 - `frontend/` - Vite/React UI, Tailwind v3/PostCSS, API client, and `/api` proxy.
@@ -185,6 +189,9 @@ Step 16 - Planned-consumption calculator (scale BOM by batches) + tests
 - `POST /api/boms` - ADMIN, PRODUCTION - create the next recipe version and activate it for the finished item.
 - `PUT /api/boms/:id` - ADMIN, PRODUCTION - replace an unused recipe in place, or create a new active version if production runs reference it.
 - `POST /api/boms/:id/clone` - ADMIN, PRODUCTION - clone a recipe to another finished item with line overrides and component replacements.
+- `GET /api/boms/:id/plan?batches=2.5` - BOM read roles - return planned base quantities and output for a batch count.
+- `GET /api/boms/:id/plan?targetOutput=300` - BOM read roles - infer and apply a four-decimal batch count for a target packet quantity.
+- `GET /api/boms/:id/plan?itemId=1&qty=20&unit=kg` - BOM read roles - infer batches from an issued ingredient quantity, converting its unit to base.
 - `GET /api/_whoami`, `GET /api/_admin-only`, `GET /api/_approve-only` - test environment only - exercise authentication, role, and capability gates.
 - No endpoints added in Steps 03-04 (schema/documentation only).
 - Step 05 adds pure functions only; no endpoints.
@@ -204,6 +211,7 @@ Step 16 - Planned-consumption calculator (scale BOM by batches) + tests
 - Opening stock movements use their item id as `sourceId` because the model has no separate opening-document record.
 - Financial-year ranges use an inclusive IST-midnight start and exclusive next-year IST-midnight end.
 - BOM cloning supports pack-size variants in one call: retain raw-material lines and replace packaging items for a new finished SKU; the source BOM remains unchanged.
+- Planned consumption rounds fractional batch counts to four decimals and each resulting output/material quantity to the nearest integer using half-up rounding.
 
 ## Assumptions (copy into README at the end)
 - Project source and project guidance live at the Git repository root.
@@ -212,6 +220,7 @@ Step 16 - Planned-consumption calculator (scale BOM by batches) + tests
 - `seed:reset` preserves Prisma's `_prisma_migrations` table while truncating application tables.
 - Purchase request quantities and rupee rates are decimal strings, keeping input conversion independent of binary floating-point.
 - BOM PUT preserves existing notes when omitted; clone copies source notes. Clone line overrides apply only to items present after the requested replacements.
+- Plan endpoint requires exactly one mode; issued quantities are interpreted in the selected BOM item's dimension and converted to base units.
 
 ## Known issues / TODO
 - `npm install` reported 13 backend and 4 frontend dependency audit findings; review before deployment.
@@ -225,6 +234,7 @@ Step 16 - Planned-consumption calculator (scale BOM by batches) + tests
 - Adjustments have no editable effective date; history filtering uses the recorded `createdAt`, and corrections always append rather than update or delete.
 - Master data has no hard-delete endpoints; item deactivation is rejected while ledger balance is nonzero.
 - BOMs have no delete endpoint; production-run history stays attached to its original recipe version.
+- Planned batch counts are capped at 100; fractional ingredient results are rounded to integer base units as required for stock quantities.
 
 ## Benchmark status (stage: PASS/FAIL/SKIPPED)
 opening PASS (6 checks; later-stage checks skipped)

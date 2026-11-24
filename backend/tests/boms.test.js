@@ -167,6 +167,56 @@ describe('BOM endpoints', () => {
     });
   });
 
+  it('plans BOM consumption from batches, target output, or an issued quantity', async () => {
+    const basePath = `/api/boms/${bom.id}/plan`;
+    const [byBatch, byTarget, byIssue, noMode, conflictingModes] = await Promise.all([
+      request(app).get(`${basePath}?batches=1`).set(as(production)),
+      request(app).get(`${basePath}?targetOutput=300`).set(as(production)),
+      request(app)
+        .get(`${basePath}?itemId=${items.flour.id}&qty=20&unit=kg`)
+        .set(as(production)),
+      request(app).get(basePath).set(as(production)),
+      request(app).get(`${basePath}?batches=1&targetOutput=300`).set(as(production))
+    ]);
+
+    expect(byBatch.status).toBe(200);
+    expect(byBatch.body).toMatchObject({
+      batchCount: '1',
+      plannedOutputQty: 200
+    });
+    expect(Object.fromEntries(
+      byBatch.body.lines.map((line) => [line.itemName, line.plannedQty])
+    )).toEqual({
+      Carton: 10,
+      Flour: 40000,
+      Oil: 10000,
+      '200 g pouch': 200,
+      'Salt and spice mix': 1200
+    });
+
+    expect(byTarget.status).toBe(200);
+    expect(byTarget.body).toMatchObject({
+      batchCount: '1.5',
+      plannedOutputQty: 300
+    });
+
+    expect(byIssue.status).toBe(200);
+    expect(byIssue.body).toMatchObject({
+      batchCount: '0.5',
+      plannedOutputQty: 100,
+      lines: expect.arrayContaining([
+        expect.objectContaining({
+          itemId: items.flour.id,
+          itemName: 'Flour',
+          plannedQty: 20000,
+          plannedQtyDisplay: '20 kg'
+        })
+      ])
+    });
+    expect(noMode.status).toBe(400);
+    expect(conflictingModes.status).toBe(400);
+  });
+
   it('rejects finished goods as recipes and components', async () => {
     const body = {
       name: 'Invalid BOM',
