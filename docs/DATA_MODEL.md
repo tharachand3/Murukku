@@ -82,6 +82,140 @@ erDiagram
         string value
         datetime updatedAt
     }
+
+    Item ||--o{ Bom : "finished item"
+    Bom ||--o{ BomLine : "contains"
+    Item ||--o{ BomLine : "ingredient"
+    Supplier ||--o{ Purchase : "supplies"
+    User ||--o{ Purchase : "records"
+    Purchase ||--o{ PurchaseLine : "contains"
+    Item ||--o{ PurchaseLine : "purchased"
+    Bom ||--o{ ProductionRun : "used for"
+    Item ||--o{ ProductionRun : "finished item"
+    User ||--o{ ProductionRun : "starts"
+    User o|--o{ ProductionRun : "completes"
+    ProductionRun ||--o{ ProductionRunLine : "issues"
+    Item ||--o{ ProductionRunLine : "material"
+    ProductionRun ||--o{ ProductionOverhead : "incurs"
+    Item ||--o{ StockMovement : "moves"
+    User o|--o{ StockMovement : "records"
+    User o|--o{ AuditLog : "performs"
+
+    Bom {
+        int id PK
+        string name
+        int finishedItemId FK
+        int version
+        boolean isActive
+        int batchYieldQty
+        string notes
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    BomLine {
+        int id PK
+        int bomId FK
+        int itemId FK
+        int qtyPerBatch
+    }
+
+    Purchase {
+        int id PK
+        string number UK
+        int supplierId FK
+        datetime purchaseDate
+        string supplierInvoiceNo
+        int totalPaise
+        string notes
+        int createdById FK
+        datetime createdAt
+    }
+
+    PurchaseLine {
+        int id PK
+        int purchaseId FK
+        int itemId FK
+        int qty
+        decimal ratePaisePerBase
+        int amountPaise
+        string batchNo
+        datetime expiryDate
+    }
+
+    ProductionRun {
+        int id PK
+        string runNo UK
+        int bomId FK
+        int finishedItemId FK
+        RunStatus status
+        decimal batchCount
+        int plannedOutputQty
+        int actualGoodQty
+        int rejectedFinishedQty
+        int yieldVarianceBp
+        boolean yieldFlagged
+        int toleranceBpUsed
+        int materialCostPaise
+        int overheadCostPaise
+        decimal costPerPacketPaise
+        string batchNo
+        datetime startedAt
+        datetime completedAt
+        int startedById FK
+        int completedById FK
+        string notes
+    }
+
+    ProductionRunLine {
+        int id PK
+        int runId FK
+        int itemId FK
+        int plannedQty
+        int issuedQty
+        int scrapQty
+        int varianceBp
+        boolean flagged
+        decimal ratePaisePerBase
+        int costPaise
+    }
+
+    ProductionOverhead {
+        int id PK
+        int runId FK
+        OverheadKind kind
+        int amountPaise
+        string note
+    }
+
+    StockMovement {
+        int id PK
+        int itemId FK
+        MovementType movementType
+        int qtyChange
+        decimal ratePaisePerBase
+        int valuePaise
+        SourceType sourceType
+        int sourceId
+        string sourceRef
+        string batchNo
+        datetime expiryDate
+        datetime movementDate
+        string note
+        int createdById FK
+        datetime createdAt
+    }
+
+    AuditLog {
+        int id PK
+        int userId FK
+        string action
+        string entity
+        int entityId
+        json before
+        json after
+        datetime createdAt
+    }
 ```
 
 Money is stored as integer paise to avoid floating-point rounding in financial values.
@@ -89,3 +223,10 @@ List prices and customer-specific prices use the same integer-paise representati
 Quantities are stored as integer base units such as grams, millilitres, pieces, or packets.
 `Unit.baseFactor` converts displayed units to integer base units at the system boundary.
 This keeps inventory arithmetic and financial totals deterministic and auditable.
+
+Stock = sum of ledger rows; production run writes ISSUE rows (raw down) and OUTPUT row (finished up).
+Each stock movement records a signed quantity in the item's integer base unit.
+The movement source identifies the originating business document for traceability.
+A bill of materials records the ingredients and base-unit quantities for one batch.
+Purchases and production runs retain their line-level quantities, rates, and costs.
+Audit logs capture who changed an entity and the recorded before-and-after values.

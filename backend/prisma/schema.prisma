@@ -32,18 +32,56 @@ enum CustomerType {
   DISTRIBUTOR
 }
 
+enum MovementType {
+  OPENING
+  PURCHASE
+  PRODUCTION_ISSUE
+  PRODUCTION_OUTPUT
+  PRODUCTION_SCRAP
+  DISPATCH
+  SALES_RETURN
+  ADJUSTMENT
+}
+
+enum SourceType {
+  OPENING
+  PURCHASE
+  PRODUCTION_RUN
+  INVOICE
+  DISPATCH
+  CREDIT_NOTE
+  ADJUSTMENT
+}
+
+enum RunStatus {
+  ISSUED
+  COMPLETED
+  CANCELLED
+}
+
+enum OverheadKind {
+  LABOUR
+  POWER_GAS
+  OTHER
+}
+
 model User {
-  id                Int        @id @default(autoincrement())
+  id                Int             @id @default(autoincrement())
   name              String
-  email             String     @unique
+  email             String          @unique
   /// Store only a one-way password hash, never a plain-text password.
   passwordHash      String
   /// Role used to authorize access to application functions.
   role              Role
-  isActive          Boolean    @default(true)
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
-  assignedCustomers Customer[] @relation("AssignedSalesman")
+  isActive          Boolean         @default(true)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  assignedCustomers Customer[]      @relation("AssignedSalesman")
+  purchases         Purchase[]
+  startedRuns       ProductionRun[] @relation("RunStartedBy")
+  completedRuns     ProductionRun[] @relation("RunCompletedBy")
+  stockMovements    StockMovement[]
+  auditLogs         AuditLog[]
 }
 
 model Unit {
@@ -59,30 +97,36 @@ model Unit {
 }
 
 model Item {
-  id                Int             @id @default(autoincrement())
-  code              String          @unique
+  id                Int                 @id @default(autoincrement())
+  code              String              @unique
   name              String
   type              ItemType
   /// Unit in which stock quantities are stored as integers.
   baseUnitId        Int
-  baseUnit          Unit            @relation("ItemBaseUnit", fields: [baseUnitId], references: [id])
+  baseUnit          Unit                @relation("ItemBaseUnit", fields: [baseUnitId], references: [id])
   /// Unit used to display quantities to people.
   displayUnitId     Int
-  displayUnit       Unit            @relation("ItemDisplayUnit", fields: [displayUnitId], references: [id])
+  displayUnit       Unit                @relation("ItemDisplayUnit", fields: [displayUnitId], references: [id])
   /// Harmonized System classification used on GST documents.
   hsnCode           String?
   /// GST rate in basis points (for example, 5% is 500).
-  gstRateBp         Int             @default(0)
+  gstRateBp         Int                 @default(0)
   /// Number of packets in a carton, for finished goods sold by packet.
   packsPerCarton    Int?
   /// Default list price in integer paise.
   sellingPricePaise Int?
   /// Reorder threshold in integer base units.
   reorderLevelBase  Int?
-  isActive          Boolean         @default(true)
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  isActive          Boolean             @default(true)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
   customerPrices    CustomerPrice[]
+  finishedBoms      Bom[]               @relation("BomFinishedItem")
+  bomLines          BomLine[]           @relation("BomLineItem")
+  purchaseLines     PurchaseLine[]
+  finishedRuns      ProductionRun[]     @relation("RunFinishedItem")
+  productionLines   ProductionRunLine[]
+  stockMovements    StockMovement[]
 
   @@index([baseUnitId])
   @@index([displayUnitId])
@@ -111,7 +155,7 @@ model Customer {
 }
 
 model Supplier {
-  id        Int      @id @default(autoincrement())
+  id        Int        @id @default(autoincrement())
   name      String
   /// GST registration number, when registered.
   gstin     String?
@@ -119,8 +163,9 @@ model Supplier {
   stateCode String?
   phone     String?
   address   String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
+  isActive  Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  purchases Purchase[]
 }
 
 model CustomerPrice {
@@ -142,4 +187,153 @@ model Setting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+model Bom {
+  id             Int             @id @default(autoincrement())
+  name           String
+  finishedItemId Int
+  finishedItem   Item            @relation("BomFinishedItem", fields: [finishedItemId], references: [id])
+  version        Int             @default(1)
+  isActive       Boolean         @default(true)
+  batchYieldQty  Int
+  notes          String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  lines          BomLine[]
+  productionRuns ProductionRun[]
+
+  @@unique([finishedItemId, version])
+}
+
+model BomLine {
+  id          Int  @id @default(autoincrement())
+  bomId       Int
+  bom         Bom  @relation(fields: [bomId], references: [id], onDelete: Cascade)
+  itemId      Int
+  item        Item @relation("BomLineItem", fields: [itemId], references: [id])
+  qtyPerBatch Int
+
+  @@unique([bomId, itemId])
+}
+
+model Purchase {
+  id                Int            @id @default(autoincrement())
+  number            String         @unique
+  supplierId        Int
+  supplier          Supplier       @relation(fields: [supplierId], references: [id])
+  purchaseDate      DateTime
+  supplierInvoiceNo String?
+  totalPaise        Int
+  notes             String?
+  createdById       Int
+  createdBy         User           @relation(fields: [createdById], references: [id])
+  createdAt         DateTime       @default(now())
+  lines             PurchaseLine[]
+}
+
+model PurchaseLine {
+  id               Int       @id @default(autoincrement())
+  purchaseId       Int
+  purchase         Purchase  @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  itemId           Int
+  item             Item      @relation(fields: [itemId], references: [id])
+  qty              Int
+  ratePaisePerBase Decimal   @db.Decimal(18, 6)
+  amountPaise      Int
+  batchNo          String?
+  expiryDate       DateTime?
+}
+
+model ProductionRun {
+  id                  Int                  @id @default(autoincrement())
+  runNo               String               @unique
+  bomId               Int
+  bom                 Bom                  @relation(fields: [bomId], references: [id])
+  finishedItemId      Int
+  finishedItem        Item                 @relation("RunFinishedItem", fields: [finishedItemId], references: [id])
+  status              RunStatus
+  batchCount          Decimal              @default(1) @db.Decimal(10, 4)
+  plannedOutputQty    Int
+  actualGoodQty       Int?
+  rejectedFinishedQty Int                  @default(0)
+  yieldVarianceBp     Int?
+  yieldFlagged        Boolean              @default(false)
+  toleranceBpUsed     Int
+  materialCostPaise   Int?
+  overheadCostPaise   Int?
+  costPerPacketPaise  Decimal?             @db.Decimal(14, 4)
+  batchNo             String?
+  startedAt           DateTime
+  completedAt         DateTime?
+  startedById         Int
+  startedBy           User                 @relation("RunStartedBy", fields: [startedById], references: [id])
+  completedById       Int?
+  completedBy         User?                @relation("RunCompletedBy", fields: [completedById], references: [id])
+  notes               String?
+  lines               ProductionRunLine[]
+  overheads           ProductionOverhead[]
+}
+
+model ProductionRunLine {
+  id               Int           @id @default(autoincrement())
+  runId            Int
+  run              ProductionRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  itemId           Int
+  item             Item          @relation(fields: [itemId], references: [id])
+  plannedQty       Int
+  issuedQty        Int
+  scrapQty         Int           @default(0)
+  varianceBp       Int?
+  flagged          Boolean       @default(false)
+  ratePaisePerBase Decimal       @db.Decimal(18, 6)
+  costPaise        Int
+
+  @@unique([runId, itemId])
+}
+
+model ProductionOverhead {
+  id          Int           @id @default(autoincrement())
+  runId       Int
+  run         ProductionRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  kind        OverheadKind
+  amountPaise Int
+  note        String?
+}
+
+model StockMovement {
+  id               Int          @id @default(autoincrement())
+  itemId           Int
+  item             Item         @relation(fields: [itemId], references: [id])
+  movementType     MovementType
+  qtyChange        Int
+  ratePaisePerBase Decimal?     @db.Decimal(18, 6)
+  valuePaise       Int?
+  sourceType       SourceType
+  sourceId         Int?
+  sourceRef        String?
+  batchNo          String?
+  expiryDate       DateTime?
+  movementDate     DateTime
+  note             String?
+  createdById      Int?
+  createdBy        User?        @relation(fields: [createdById], references: [id])
+  createdAt        DateTime     @default(now())
+
+  @@index([itemId, movementDate])
+  @@index([sourceType, sourceId])
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  Int?
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
 }

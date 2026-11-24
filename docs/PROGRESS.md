@@ -2,14 +2,14 @@
 Last updated: 2026-11-24 by Copilot
 
 ## Next Step
-Step 03 - Prisma schema B: BOM, purchases, production runs, stock ledger, audit log
+Step 03 - Apply and verify Prisma schema B migration (`ledger_bom_production`); the database at localhost:5433 is currently unavailable.
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install` and `npm --prefix frontend install`.
 - Start PostgreSQL on host port 5433: `npm run db:up`; stop it with `npm run db:down`.
 - Start the API and UI in separate terminals: `npm run dev:backend` and `npm run dev:frontend`.
 - Test backend: `npm test`; build frontend: `npm --prefix frontend run build`.
-- Run Prisma commands from `backend/`: `npx prisma format`, `npx prisma validate`, `npx prisma migrate status`.
+- Run Prisma commands from `backend/`: `npx prisma format`, `npx prisma validate`, `npx prisma migrate dev --name ledger_bom_production`, `npx prisma migrate status`.
 - Copy `backend/.env.example` to `backend/.env` and set a private JWT secret before use.
 
 ## Step checklist (tick when DONE and VERIFIED)
@@ -83,6 +83,7 @@ Step 03 - Prisma schema B: BOM, purchases, production runs, stock ledger, audit 
 [ ] 60 Demo video script, interview rehearsal sheet, final audit
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
+- Step 03 (2026-11-24): Added BOM, purchase, production, stock-ledger, and audit-log Prisma models plus the Mermaid model and six-line explanation. Prisma format and validate passed; migration is blocked because PostgreSQL at localhost:5433 and Docker are unavailable. Checklist remains open until migration applies; no design deviations or new assumptions.
 - Step 01 (2026-11-24): Added root npm scripts/ignore rules, Postgres Compose service, Node/Express/Prisma API and health test, and React/Vite/Tailwind UI with API status. Added package manifests/lockfiles and backend env example/local env.
 - Verified: Prisma client generation; `npm test`; frontend production build; `docker compose config --quiet`; Compose database health. The initial host mapping collided with the Windows PostgreSQL service on port 5432; Compose now uses host port 5433.
 - Initial layout assumption (resolved): supplied guidance was under `starter-kit/`; housekeeping moved it and the project docs to the repository root.
@@ -94,12 +95,13 @@ Step 03 - Prisma schema B: BOM, purchases, production runs, stock ledger, audit 
 ## File map (path - purpose)
 - `AGENTS.md` - repository instructions.
 - `package.json`, `.gitignore`, `docker-compose.yml` - root scripts, ignore rules, and PostgreSQL service.
-- `backend/` - Node ES-module API, validated configuration, Prisma client/schema/migrations, health route, and test.
+- `backend/` - Node ES-module API, validated configuration, Prisma client/schema/migrations, health route, and test. Step 03 adds BOM, purchasing, production, stock ledger, and audit models.
 - `frontend/` - Vite/React UI, Tailwind v3/PostCSS, API client, and `/api` proxy.
-- `docs/` - project context, progress tracker, step prompts, and Mermaid data-model note.
+- `docs/` - project context, progress tracker, step prompts, and Mermaid data-model note, now including BOM/purchase/production/ledger/audit entities.
 
 ## API endpoints (METHOD path - roles - purpose)
 - `GET /api/health` - public - API/database status and ISO timestamp; HTTP 200 if the database query fails.
+- No endpoints added in Step 03 (schema/documentation only).
 
 ## Decisions (deviations from AI_CONTEXT.md and why)
 - DB host port is 5433 because the Windows PostgreSQL service occupies 5432
@@ -110,6 +112,7 @@ Step 03 - Prisma schema B: BOM, purchases, production runs, stock ledger, audit 
 ## Known issues / TODO
 - `npm install` reported 13 backend and 4 frontend dependency audit findings; review before deployment.
 - Regenerate Prisma Client after stopping the running backend process that holds `query_engine-windows.dll.node`.
+- Step 03 migration not applied: Docker daemon is unavailable and no PostgreSQL server listens on localhost:5433. Start the configured database and rerun `cd backend; npx prisma migrate dev --name ledger_bom_production`.
 
 ## Benchmark status (stage: PASS/FAIL/SKIPPED)
 (not started)
