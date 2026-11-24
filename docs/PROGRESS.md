@@ -2,7 +2,7 @@
 Last updated: 2026-11-24 by Copilot
 
 ## Next Step
-Step 11 - Document numbering service (financial-year counters)
+Step 12 - Purchase API with supplier and per-unit rates
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install` and `npm --prefix frontend install`.
@@ -11,6 +11,7 @@ Step 11 - Document numbering service (financial-year counters)
 - From `backend/`, apply migrations to `oda_test` before the first test run: set `$env:DATABASE_URL = 'postgresql://oda:oda@localhost:5433/oda_test?schema=public'`, run `npx prisma migrate deploy`, then `Remove-Item Env:DATABASE_URL`. `DATABASE_URL_TEST` is configured in `.env`; Vitest refuses any test URL other than `oda_test`.
 - Start the API and UI in separate terminals: `npm run dev:backend` and `npm run dev:frontend`.
 - From `backend/`, test backend and pure library units with `npm test`; Vitest resets only the isolated test database. Build frontend: `npm --prefix frontend run build`.
+- Number generation tests run with `npm test -- tests/lib/fy.test.js tests/numberingService.test.js`. Call `nextNumber(tx, 'INV', invoiceDate)` inside the same Prisma transaction as the document write so rollback does not consume the number.
 - From `backend/`, load benchmark data with `npm run seed` (or `npx prisma db seed`); rerun safely with no duplicate records.
 - From `backend/`, `npm run seed:reset` clears application tables and reseeds (destructive; refuses `NODE_ENV=production`); `npm run balances` prints ledger-derived stock in display units.
 - From `backend/`, run `npm run bench:check -- --stage=opening` after `npm run seed:reset`; select `after-purchase`, `after-run`, `after-dispatch`, or `final` to check later benchmark checkpoints.
@@ -44,7 +45,7 @@ Step 11 - Document numbering service (financial-year counters)
 ### Phase 2 - Stock ledger and purchases
 [x] 09 Ledger service (addMovement, balances, running ledger) + tests
 [x] 10 Stock summary and ledger APIs + benchmark-check script
-[ ] 11 Document numbering service (financial-year counters)
+[x] 11 Document numbering service (financial-year counters)
 [ ] 12 Purchase API with supplier and per-unit rates
 [ ] 13 Stock adjustment API (reason + audit)
 [ ] 14 Master data CRUD APIs (items, customers, suppliers, settings, users)
@@ -102,6 +103,7 @@ Step 11 - Document numbering service (financial-year counters)
 [ ] 60 Demo video script, interview rehearsal sheet, final audit
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
+- Step 11 (2026-11-24): Added Asia/Kolkata financial-year helpers and an atomic `DocumentCounter` service; added FY boundary, independent/reset counters, >9999, rollback, and concurrency tests. `npm test` passes (52 tests); no routes or schema changes.
 - Step 10 (2026-11-24): Added capability-protected stock summary, running ledger, per-item balance, and finished availability routes; salesmen receive finished goods only and availability subtracts outstanding reservations. Added staged benchmark checker. `npm test` passes (42); opening benchmark is PASS (6 checks); live salesman summary/availability returned 403/200.
 - Step 09 (2026-11-24): Added transaction-safe ledger writes/balances/running ledger, item-row locking for outflows, and the append-only UPDATE/DELETE trigger. Routed seed openings through the service; added isolated `oda_test` reset/seed helpers and concurrency/trigger tests. `npm test` passes (37); repeated seed kept six openings.
 - Step 08 (2026-11-24): Added Zod request validation, shared AppError helpers/error handler, async route wrapper, and transaction-compatible JSON-safe audit helper; audited successful/failed logins and added the capability-protected audit listing. Refactored auth/health routes. `npm test` passes (29); live 404, demo login, and audit lookup verified.
@@ -128,11 +130,13 @@ Step 11 - Document numbering service (financial-year counters)
 - `backend/src/services/authService.js`, `backend/src/middleware/auth.js`, `backend/src/routes/auth.js` - credential login, JWT issuance/verification, authorization checks, and auth endpoints.
 - `backend/src/services/ledgerService.js` - the only application service that creates stock movements; provides locked outflows, balances, and running ledger rows.
 - `backend/src/services/stockService.js`, `backend/src/routes/stock.js` - finished-goods availability and capability-protected stock APIs.
+- `backend/src/lib/fy.js` - Asia/Kolkata financial-year lookup and UTC IST-midnight range boundaries.
+- `backend/src/services/numberingService.js` - `nextNumber(tx, 'INV', invoiceDate)` atomically increments the financial-year counter inside the caller's document transaction.
 - `backend/scripts/benchmark-check.js` - table-driven PASS/FAIL/SKIPPED checks for benchmark stages; run with `npm run bench:check -- --stage=opening`.
 - `backend/src/lib/errors.js`, `asyncHandler.js`, `audit.js`; `backend/src/middleware/validate.js`, `errorHandler.js` - shared errors, async route handling, validation, and transaction-aware audit writes.
 - `backend/src/routes/audit.js` - capability-protected, filtered and paginated audit log listing.
 - `backend/tests/helpers/db.js`, `tests/setup.js`, `vitest.config.js` - guarded `oda_test` database reset/seeding and Vitest isolation.
-- `backend/tests/` - stock API, ledger, auth, audit, middleware/error, and pure library Vitest coverage.
+- `backend/tests/` - stock API, ledger, numbering/FY, auth, audit, middleware/error, and pure library Vitest coverage.
 - `backend/prisma/migrations/20261124115051_ledger_append_only/` - database trigger preventing stock-movement updates and deletes.
 - `frontend/` - Vite/React UI, Tailwind v3/PostCSS, API client, and `/api` proxy.
 - `docs/` - project context, progress tracker, step prompts, and Mermaid data-model note, now including BOM/purchase/production/ledger/audit/sales entities and invoice/cancellation notes.
@@ -152,6 +156,7 @@ Step 11 - Document numbering service (financial-year counters)
 - Step 06 adds seed and maintenance scripts only; no endpoints.
 - Step 09 adds the ledger service only; no endpoints.
 - Finished availability subtracts outstanding approved/invoiced quantities, including partial dispatches, from the finished-goods ledger balance.
+- Step 11 adds financial-year and number-generation helpers only; no API endpoints were added.
 
 ## Decisions (deviations from AI_CONTEXT.md and why)
 - DB host port is 5433 because the Windows PostgreSQL service occupies 5432
@@ -159,6 +164,7 @@ Step 11 - Document numbering service (financial-year counters)
 - Authentication reloads the account and role for every request, so deactivation, deletion, and role changes take effect without waiting for token expiry.
 - Failed-login audits store the attempted email but never the password; unknown-email attempts have a null userId. Audit list `from`/`to` bounds are inclusive and `limit` is capped at 100.
 - Opening stock movements use their item id as `sourceId` because the model has no separate opening-document record.
+- Financial-year ranges use an inclusive IST-midnight start and exclusive next-year IST-midnight end.
 
 ## Assumptions (copy into README at the end)
 - Project source and project guidance live at the Git repository root.
@@ -173,6 +179,7 @@ Step 11 - Document numbering service (financial-year counters)
 - Prisma 6 warns that the requested `package.json#prisma` seed configuration is deprecated in Prisma 7.
 - The append-only trigger blocks row UPDATE/DELETE; explicit reset helpers use TRUNCATE only on a dedicated/reset database. Tests require the migrated `oda_test` database.
 - Benchmark stock snapshots are checked at the selected stage; later stages and not-yet-reached document checks print SKIPPED.
+- Numbering is gap-free only when `nextNumber` receives the transaction client and shares the document write's transaction; document routes are not implemented yet.
 
 ## Benchmark status (stage: PASS/FAIL/SKIPPED)
 opening PASS (6 checks; later-stage checks skipped)
