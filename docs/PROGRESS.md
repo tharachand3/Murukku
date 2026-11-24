@@ -2,7 +2,7 @@
 Last updated: 2026-11-24 by Copilot
 
 ## Next Step
-Step 10 - Stock summary and ledger APIs + benchmark-check script
+Step 11 - Document numbering service (financial-year counters)
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install` and `npm --prefix frontend install`.
@@ -13,6 +13,7 @@ Step 10 - Stock summary and ledger APIs + benchmark-check script
 - From `backend/`, test backend and pure library units with `npm test`; Vitest resets only the isolated test database. Build frontend: `npm --prefix frontend run build`.
 - From `backend/`, load benchmark data with `npm run seed` (or `npx prisma db seed`); rerun safely with no duplicate records.
 - From `backend/`, `npm run seed:reset` clears application tables and reseeds (destructive; refuses `NODE_ENV=production`); `npm run balances` prints ledger-derived stock in display units.
+- From `backend/`, run `npm run bench:check -- --stage=opening` after `npm run seed:reset`; select `after-purchase`, `after-run`, `after-dispatch`, or `final` to check later benchmark checkpoints.
 - Demo logins (password for every account: `Demo@123`):
 
   | Role | Email |
@@ -42,7 +43,7 @@ Step 10 - Stock summary and ledger APIs + benchmark-check script
 [x] 08 Validation, error handling and audit-log helper
 ### Phase 2 - Stock ledger and purchases
 [x] 09 Ledger service (addMovement, balances, running ledger) + tests
-[ ] 10 Stock summary and ledger APIs + benchmark-check script
+[x] 10 Stock summary and ledger APIs + benchmark-check script
 [ ] 11 Document numbering service (financial-year counters)
 [ ] 12 Purchase API with supplier and per-unit rates
 [ ] 13 Stock adjustment API (reason + audit)
@@ -101,6 +102,7 @@ Step 10 - Stock summary and ledger APIs + benchmark-check script
 [ ] 60 Demo video script, interview rehearsal sheet, final audit
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
+- Step 10 (2026-11-24): Added capability-protected stock summary, running ledger, per-item balance, and finished availability routes; salesmen receive finished goods only and availability subtracts outstanding reservations. Added staged benchmark checker. `npm test` passes (42); opening benchmark is PASS (6 checks); live salesman summary/availability returned 403/200.
 - Step 09 (2026-11-24): Added transaction-safe ledger writes/balances/running ledger, item-row locking for outflows, and the append-only UPDATE/DELETE trigger. Routed seed openings through the service; added isolated `oda_test` reset/seed helpers and concurrency/trigger tests. `npm test` passes (37); repeated seed kept six openings.
 - Step 08 (2026-11-24): Added Zod request validation, shared AppError helpers/error handler, async route wrapper, and transaction-compatible JSON-safe audit helper; audited successful/failed logins and added the capability-protected audit listing. Refactored auth/health routes. `npm test` passes (29); live 404, demo login, and audit lookup verified.
 - Step 07 (2026-11-24): Added JWT login, active-user authentication, role/capability middleware and test-only auth endpoints; added `jsonwebtoken`. Added Supertest coverage for login, invalid credentials, missing/deactivated/deleted users, role and capability checks. `npm test` passes (23); live demo login and `/api/auth/me` returned ADMIN successfully.
@@ -125,10 +127,12 @@ Step 10 - Stock summary and ledger APIs + benchmark-check script
 - `backend/src/config/permissions.js` - centralized role list and capability matrix.
 - `backend/src/services/authService.js`, `backend/src/middleware/auth.js`, `backend/src/routes/auth.js` - credential login, JWT issuance/verification, authorization checks, and auth endpoints.
 - `backend/src/services/ledgerService.js` - the only application service that creates stock movements; provides locked outflows, balances, and running ledger rows.
+- `backend/src/services/stockService.js`, `backend/src/routes/stock.js` - finished-goods availability and capability-protected stock APIs.
+- `backend/scripts/benchmark-check.js` - table-driven PASS/FAIL/SKIPPED checks for benchmark stages; run with `npm run bench:check -- --stage=opening`.
 - `backend/src/lib/errors.js`, `asyncHandler.js`, `audit.js`; `backend/src/middleware/validate.js`, `errorHandler.js` - shared errors, async route handling, validation, and transaction-aware audit writes.
 - `backend/src/routes/audit.js` - capability-protected, filtered and paginated audit log listing.
 - `backend/tests/helpers/db.js`, `tests/setup.js`, `vitest.config.js` - guarded `oda_test` database reset/seeding and Vitest isolation.
-- `backend/tests/` - ledger, auth, audit, middleware/error, and pure library Vitest coverage.
+- `backend/tests/` - stock API, ledger, auth, audit, middleware/error, and pure library Vitest coverage.
 - `backend/prisma/migrations/20261124115051_ledger_append_only/` - database trigger preventing stock-movement updates and deletes.
 - `frontend/` - Vite/React UI, Tailwind v3/PostCSS, API client, and `/api` proxy.
 - `docs/` - project context, progress tracker, step prompts, and Mermaid data-model note, now including BOM/purchase/production/ledger/audit/sales entities and invoice/cancellation notes.
@@ -138,11 +142,16 @@ Step 10 - Stock summary and ledger APIs + benchmark-check script
 - `POST /api/auth/login` - public - validate credentials and return a 12-hour JWT with the user summary.
 - `GET /api/auth/me` - any authenticated user - return the current active user loaded from the database.
 - `GET /api/audit` - ADMIN, ACCOUNTANT, OWNER - newest-first audit rows with optional entity, entityId, userId, from/to, page, and limit filters; includes user name.
+- `GET /api/stock/summary?type=RAW|PACKAGING|FINISHED` - ADMIN, PRODUCTION, ACCOUNTANT, OWNER - balances in base integers and display strings.
+- `GET /api/stock/ledger?itemId=&from=&to=` - ADMIN, PRODUCTION, ACCOUNTANT, OWNER - running movement ledger with base quantities and display strings.
+- `GET /api/stock/items/:id/balance` - ADMIN, PRODUCTION, ACCOUNTANT, OWNER - one item's base and display balance.
+- `GET /api/stock/finished-availability` - SALESMAN plus stock-read roles - finished goods only; subtracts quantities reserved by approved/invoiced orders.
 - `GET /api/_whoami`, `GET /api/_admin-only`, `GET /api/_approve-only` - test environment only - exercise authentication, role, and capability gates.
 - No endpoints added in Steps 03-04 (schema/documentation only).
 - Step 05 adds pure functions only; no endpoints.
 - Step 06 adds seed and maintenance scripts only; no endpoints.
 - Step 09 adds the ledger service only; no endpoints.
+- Finished availability subtracts outstanding approved/invoiced quantities, including partial dispatches, from the finished-goods ledger balance.
 
 ## Decisions (deviations from AI_CONTEXT.md and why)
 - DB host port is 5433 because the Windows PostgreSQL service occupies 5432
@@ -163,6 +172,7 @@ Step 10 - Stock summary and ledger APIs + benchmark-check script
 - No Step 05-specific known issues.
 - Prisma 6 warns that the requested `package.json#prisma` seed configuration is deprecated in Prisma 7.
 - The append-only trigger blocks row UPDATE/DELETE; explicit reset helpers use TRUNCATE only on a dedicated/reset database. Tests require the migrated `oda_test` database.
+- Benchmark stock snapshots are checked at the selected stage; later stages and not-yet-reached document checks print SKIPPED.
 
 ## Benchmark status (stage: PASS/FAIL/SKIPPED)
-(not started)
+opening PASS (6 checks; later-stage checks skipped)

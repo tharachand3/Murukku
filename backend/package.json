@@ -13,6 +13,7 @@
     "test:watch": "vitest",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
+    "bench:check": "node scripts/benchmark-check.js",
     "seed": "node prisma/seed.js",
     "seed:reset": "node scripts/reset-db.js",
     "balances": "node scripts/print-balances.js"
