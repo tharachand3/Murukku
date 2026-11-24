@@ -2,7 +2,7 @@
 Last updated: 2026-11-24 by Copilot
 
 ## Next Step
-Step 15 - BOM API (create, view, update)
+Step 16 - Planned-consumption calculator (scale BOM by batches) + tests
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install` and `npm --prefix frontend install`.
@@ -30,6 +30,7 @@ Step 15 - BOM API (create, view, update)
 - Login with `POST /api/auth/login`, then send its token as `Authorization: Bearer <token>` to `GET /api/auth/me`.
 - `GET /api/audit` requires ADMIN, ACCOUNTANT, or OWNER; supports entity/user/date filters and pagination (`limit` max 100).
 - Master data reads require authentication; ADMIN writes through `/api/items`, `/api/customers`, `/api/suppliers`, `/api/settings`, and `/api/users`. SALESMAN customer reads are limited to assigned customers.
+- BOM reads use `GET /api/boms` or `/api/boms/:id` with ADMIN, PRODUCTION, ACCOUNTANT, or OWNER; ADMIN/PRODUCTION can create, update, and clone. Line quantities are entered as decimal strings with a unit and stored in item base units.
 - Check library source for float parsing/formatting: from `backend/`, run `rg -n "parseFloat|toFixed" src/lib` (expect no matches).
 - Run Prisma commands from `backend/`: `npx prisma format`, `npx prisma validate`, `npx prisma migrate dev`, `npx prisma migrate status`.
 - To check the append-only trigger, connect with `docker compose exec -it db psql -U oda -d oda` and run `UPDATE "StockMovement" SET "qtyChange" = 1;` (it must raise an error).
@@ -53,7 +54,7 @@ Step 15 - BOM API (create, view, update)
 [x] 13 Stock adjustment API (reason + audit)
 [x] 14 Master data CRUD APIs (items, customers, suppliers, settings, users)
 ### Phase 3 - BOM and production (highest weight)
-[ ] 15 BOM API (create, view, update)
+[x] 15 BOM API (create, view, update)
 [ ] 16 Planned-consumption calculator (scale BOM by batches) + tests
 [ ] 17 Production run: start and issue materials
 [ ] 18 Production run: complete with actual output, scrap, damaged
@@ -106,6 +107,7 @@ Step 15 - BOM API (create, view, update)
 [ ] 60 Demo video script, interview rehearsal sheet, final audit
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
+- Step 15 (2026-11-24): Added role-gated BOM list/detail/create/update/clone APIs, unit-to-base conversion, single-active versioning, and audit writes; used BOM edits create a new version. Added coverage for seeded recipe display, invalid types, history, cloning, and role denial. `npm test` passes (78); live production login showed the expected 200-yield recipe quantities.
 - Step 14 (2026-11-24): Added audited item, customer/price, supplier, settings, and ADMIN user APIs with Zod validation and role gates; salesman customer access is assignment-scoped. Added state-code validation and focused API tests. `npm test` passes (71 tests); no schema changes. Assumption: customer price PUT accepts `{ prices: [...] }` and upserts only the submitted items.
 - Step 13 (2026-11-24): Added the numbered StockAdjustment model/migration and documented its source traceability. Added role-gated adjustment create/list routes; IN/OUT append ledger rows at weighted-average rates and audit before/after balances transactionally. `npm test` passes (64); Prisma migration status is up to date.
 - Step 12 (2026-11-24): Added an atomic purchase API with unit/rate conversion, purchase-ledger entries and audit, plus exact weighted-average rates; added list/detail reads and extended the after-purchase benchmark checks. Verified `seed:reset`, production login/60 kg flour POST, and benchmark PASS (4 checks); `npm test` passes (59).
@@ -140,6 +142,7 @@ Step 15 - BOM API (create, view, update)
 - `backend/src/services/costingService.js` - weighted-average paise-per-base-unit rates from dated priced receipts, without rounded ledger values.
 - `backend/src/services/purchaseService.js`, `backend/src/routes/purchases.js` - transactionally create/list/read purchases, record receipts through the ledger service, and return display quantities/amounts.
 - `backend/src/services/masterDataService.js`, `backend/src/routes/{items,customers,suppliers}.js` - audited item/customer/price/supplier CRUD and salesman-assignment visibility.
+- `backend/src/services/bomService.js`, `backend/src/routes/boms.js` - validated BOM reads, input conversion to base quantities, version-safe edits, and pack-size cloning.
 - `backend/src/services/settingsService.js`, `backend/src/routes/settings.js` - whitelist-validated settings reads/writes with transactional audit.
 - `backend/src/services/userService.js`, `backend/src/routes/users.js` - ADMIN user management, bcrypt password hashing/reset, and password-hash-safe responses.
 - `backend/src/lib/states.js` - supported Indian state-code/name map used by customer, supplier, and GSTIN validation.
@@ -177,6 +180,11 @@ Step 15 - BOM API (create, view, update)
 - `GET /api/suppliers`, `GET /api/suppliers/:id` - all authenticated roles. `POST /api/suppliers`, `PATCH /api/suppliers/:id` - ADMIN.
 - `GET /api/settings` - all authenticated roles. `PUT /api/settings/:key` - ADMIN; key is whitelisted and audited.
 - `GET /api/users`, `POST /api/users`, `PATCH /api/users/:id`, `POST /api/users/:id/reset-password` - ADMIN; response payloads never include password hashes.
+- `GET /api/boms?finishedItemId=&active=` - ADMIN, PRODUCTION, ACCOUNTANT, OWNER - list/filter recipes with component base quantities and display strings.
+- `GET /api/boms/:id` - ADMIN, PRODUCTION, ACCOUNTANT, OWNER - recipe detail including named component lines and batch yield.
+- `POST /api/boms` - ADMIN, PRODUCTION - create the next recipe version and activate it for the finished item.
+- `PUT /api/boms/:id` - ADMIN, PRODUCTION - replace an unused recipe in place, or create a new active version if production runs reference it.
+- `POST /api/boms/:id/clone` - ADMIN, PRODUCTION - clone a recipe to another finished item with line overrides and component replacements.
 - `GET /api/_whoami`, `GET /api/_admin-only`, `GET /api/_approve-only` - test environment only - exercise authentication, role, and capability gates.
 - No endpoints added in Steps 03-04 (schema/documentation only).
 - Step 05 adds pure functions only; no endpoints.
@@ -195,6 +203,7 @@ Step 15 - BOM API (create, view, update)
 - Failed-login audits store the attempted email but never the password; unknown-email attempts have a null userId. Audit list `from`/`to` bounds are inclusive and `limit` is capped at 100.
 - Opening stock movements use their item id as `sourceId` because the model has no separate opening-document record.
 - Financial-year ranges use an inclusive IST-midnight start and exclusive next-year IST-midnight end.
+- BOM cloning supports pack-size variants in one call: retain raw-material lines and replace packaging items for a new finished SKU; the source BOM remains unchanged.
 
 ## Assumptions (copy into README at the end)
 - Project source and project guidance live at the Git repository root.
@@ -202,6 +211,7 @@ Step 15 - BOM API (create, view, update)
 - Opening finished goods are valued at Rs 30/packet (3000 paise), as the brief provides no cost.
 - `seed:reset` preserves Prisma's `_prisma_migrations` table while truncating application tables.
 - Purchase request quantities and rupee rates are decimal strings, keeping input conversion independent of binary floating-point.
+- BOM PUT preserves existing notes when omitted; clone copies source notes. Clone line overrides apply only to items present after the requested replacements.
 
 ## Known issues / TODO
 - `npm install` reported 13 backend and 4 frontend dependency audit findings; review before deployment.
@@ -214,6 +224,7 @@ Step 15 - BOM API (create, view, update)
 - Purchases currently support create and read only; edit, cancellation, and purchase-return workflows are not implemented.
 - Adjustments have no editable effective date; history filtering uses the recorded `createdAt`, and corrections always append rather than update or delete.
 - Master data has no hard-delete endpoints; item deactivation is rejected while ledger balance is nonzero.
+- BOMs have no delete endpoint; production-run history stays attached to its original recipe version.
 
 ## Benchmark status (stage: PASS/FAIL/SKIPPED)
 opening PASS (6 checks; later-stage checks skipped)
