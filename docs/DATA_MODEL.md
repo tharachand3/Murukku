@@ -99,6 +99,8 @@ erDiagram
     ProductionRun ||--o{ ProductionOverhead : "incurs"
     Item ||--o{ StockMovement : "moves"
     User o|--o{ StockMovement : "records"
+    Item ||--o{ StockAdjustment : "adjusted by"
+    User ||--o{ StockAdjustment : "records"
     User o|--o{ AuditLog : "performs"
     Customer ||--o{ Order : "places"
     User ||--o{ Order : "salesman"
@@ -220,6 +222,17 @@ erDiagram
         string batchNo
         datetime expiryDate
         datetime movementDate
+        string note
+        int createdById FK
+        datetime createdAt
+    }
+
+    StockAdjustment {
+        int id PK
+        string number UK
+        int itemId FK
+        int qtyChange
+        string reason
         string note
         int createdById FK
         datetime createdAt
@@ -359,6 +372,7 @@ Stock = sum of ledger rows; production run writes ISSUE rows (raw down) and OUTP
 Each stock movement records a signed quantity in the item's integer base unit.
 The movement source identifies the originating business document for traceability.
 Stock movements are append-only: a PostgreSQL trigger rejects UPDATE and DELETE; corrections use a new ADJUSTMENT movement.
+Each adjustment has a numbered source record so its append-only ledger row is traceable.
 A bill of materials records the ingredients and base-unit quantities for one batch.
 Purchases and production runs retain their line-level quantities, rates, and costs.
 Audit logs capture who changed an entity and the recorded before-and-after values.

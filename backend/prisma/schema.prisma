@@ -87,28 +87,29 @@ enum PaymentMode {
 }
 
 model User {
-  id                 Int             @id @default(autoincrement())
+  id                 Int               @id @default(autoincrement())
   name               String
-  email              String          @unique
+  email              String            @unique
   /// Store only a one-way password hash, never a plain-text password.
   passwordHash       String
   /// Role used to authorize access to application functions.
   role               Role
-  isActive           Boolean         @default(true)
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
-  assignedCustomers  Customer[]      @relation("AssignedSalesman")
+  isActive           Boolean           @default(true)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  assignedCustomers  Customer[]        @relation("AssignedSalesman")
   purchases          Purchase[]
-  startedRuns        ProductionRun[] @relation("RunStartedBy")
-  completedRuns      ProductionRun[] @relation("RunCompletedBy")
+  startedRuns        ProductionRun[]   @relation("RunStartedBy")
+  completedRuns      ProductionRun[]   @relation("RunCompletedBy")
   stockMovements     StockMovement[]
   auditLogs          AuditLog[]
-  salesOrders        Order[]         @relation("OrderSalesman")
-  approvedOrders     Order[]         @relation("OrderApprovedBy")
+  salesOrders        Order[]           @relation("OrderSalesman")
+  approvedOrders     Order[]           @relation("OrderApprovedBy")
   createdInvoices    Invoice[]
   createdDispatches  Dispatch[]
   createdPayments    Payment[]
   createdCreditNotes CreditNote[]
+  stockAdjustments   StockAdjustment[]
 }
 
 model Unit {
@@ -154,6 +155,7 @@ model Item {
   finishedRuns      ProductionRun[]     @relation("RunFinishedItem")
   productionLines   ProductionRunLine[]
   stockMovements    StockMovement[]
+  stockAdjustments  StockAdjustment[]
   orderLines        OrderLine[]
   invoiceLines      InvoiceLine[]
   dispatchLines     DispatchLine[]
@@ -355,6 +357,21 @@ model StockMovement {
 
   @@index([itemId, movementDate])
   @@index([sourceType, sourceId])
+}
+
+model StockAdjustment {
+  id          Int      @id @default(autoincrement())
+  number      String   @unique
+  itemId      Int
+  item        Item     @relation(fields: [itemId], references: [id])
+  qtyChange   Int
+  reason      String
+  note        String?
+  createdById Int
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([itemId, createdAt])
 }
 
 model AuditLog {
