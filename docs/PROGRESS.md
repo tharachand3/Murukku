@@ -5,203 +5,84 @@ Last updated: 2026-11-24 by Copilot
 Step 17 - Production run: start and issue materials
 
 ## How to run (keep accurate)
-- Install dependencies: `npm --prefix backend install` and `npm --prefix frontend install`.
-- Start PostgreSQL on host port 5433: `npm run db:up`; stop it with `npm run db:down`.
-- Create the separate test database once if it does not exist: `docker compose exec -T db createdb -U oda oda_test`.
-- From `backend/`, apply migrations to `oda_test` before the first test run: set `$env:DATABASE_URL = 'postgresql://oda:oda@localhost:5433/oda_test?schema=public'`, run `npx prisma migrate deploy`, then `Remove-Item Env:DATABASE_URL`. `DATABASE_URL_TEST` is configured in `.env`; Vitest refuses any test URL other than `oda_test`.
-- Start the API and UI in separate terminals: `npm run dev:backend` and `npm run dev:frontend`.
-- From `backend/`, test backend and pure library units with `npm test`; Vitest resets only the isolated test database. Build frontend: `npm --prefix frontend run build`.
-- Number generation tests run with `npm test -- tests/lib/fy.test.js tests/numberingService.test.js`. Call `nextNumber(tx, 'INV', invoiceDate)` inside the same Prisma transaction as the document write so rollback does not consume the number.
-- Purchase receipts use `POST /api/purchases` with a PRODUCTION or ADMIN token; quantities and rates are entered as decimal strings in the chosen unit. After the benchmark receipt, run `npm run bench:check -- --stage=after-purchase`.
-- Stock corrections use `POST /api/stock/adjustments` with an ADMIN or PRODUCTION token; `qty` is a positive decimal string and `direction` selects the signed movement. Read the paged list with `GET /api/stock/adjustments?itemId=&from=&to=&page=&limit=`.
-- From `backend/`, load benchmark data with `npm run seed` (or `npx prisma db seed`); rerun safely with no duplicate records.
-- From `backend/`, `npm run seed:reset` clears application tables and reseeds (destructive; refuses `NODE_ENV=production`); `npm run balances` prints ledger-derived stock in display units.
-- From `backend/`, run `npm run bench:check -- --stage=opening` after `npm run seed:reset`; select `after-purchase`, `after-run`, `after-dispatch`, or `final` to check later benchmark checkpoints.
-- Demo logins (password for every account: `Demo@123`):
-
-  | Role | Email |
-  | --- | --- |
-  | ADMIN | `admin@demo.com` |
-  | PRODUCTION | `production@demo.com` |
-  | SALESMAN | `salesman.a@demo.com` |
-  | SALESMAN | `salesman.b@demo.com` |
-  | ACCOUNTANT | `accountant@demo.com` |
-  | OWNER | `owner@demo.com` |
-- Login with `POST /api/auth/login`, then send its token as `Authorization: Bearer <token>` to `GET /api/auth/me`.
-- `GET /api/audit` requires ADMIN, ACCOUNTANT, or OWNER; supports entity/user/date filters and pagination (`limit` max 100).
-- Master data reads require authentication; ADMIN writes through `/api/items`, `/api/customers`, `/api/suppliers`, `/api/settings`, and `/api/users`. SALESMAN customer reads are limited to assigned customers.
-- BOM reads use `GET /api/boms` or `/api/boms/:id` with ADMIN, PRODUCTION, ACCOUNTANT, or OWNER; ADMIN/PRODUCTION can create, update, and clone. Line quantities are entered as decimal strings with a unit and stored in item base units.
-- `GET /api/boms/:id/plan` accepts exactly one of `?batches=2.5`, `?targetOutput=300`, or `?itemId=1&qty=20&unit=kg`; batch counts are limited to 100 and reported to four decimal places.
-- Check library source for float parsing/formatting: from `backend/`, run `rg -n "parseFloat|toFixed" src/lib` (expect no matches).
-- Run Prisma commands from `backend/`: `npx prisma format`, `npx prisma validate`, `npx prisma migrate dev`, `npx prisma migrate status`.
-- To check the append-only trigger, connect with `docker compose exec -it db psql -U oda -d oda` and run `UPDATE "StockMovement" SET "qtyChange" = 1;` (it must raise an error).
+- Install dependencies: `npm --prefix backend install`; start/stop PostgreSQL on port 5433 with `npm run db:up` / `npm run db:down`.
+- Create `oda_test` once: `docker compose exec -T db createdb -U oda oda_test`. From `backend/`, set `$env:DATABASE_URL = 'postgresql://oda:oda@localhost:5433/oda_test?schema=public'`, run `npx prisma migrate deploy`, then `Remove-Item Env:DATABASE_URL`; Vitest refuses non-test databases.
+- Run backend tests from `backend/`: `npm test`. Build the frontend with `npm --prefix frontend run build`.
+- Start API/UI in separate terminals: `npm run dev:backend` and `npm run dev:frontend`.
+- Prisma commands from `backend/`: `npx prisma format`, `npx prisma validate`, `npx prisma migrate dev`, `npx prisma migrate status`.
+- Seed with `npm run seed`; reset/reseed (destructive; production is refused) with `npm run seed:reset`; print ledger balances with `npm run balances`.
+- Run benchmarks after reset: `npm run bench:check -- --stage=opening`; available stages: `after-purchase`, `after-run`, `after-dispatch`, `final`.
+- Purchase receipts use PRODUCTION/ADMIN and decimal-string qty/rates; check with `npm run bench:check -- --stage=after-purchase`. Adjustments use ADMIN/PRODUCTION with positive qty and IN/OUT direction.
+- Numbering tests: `npm test -- tests/lib/fy.test.js tests/numberingService.test.js`. Call `nextNumber(tx, 'INV', date)` inside the document transaction to avoid burning numbers on rollback.
+- Demo password is `Demo@123` for `admin@demo.com`, `production@demo.com`, `salesman.a@demo.com`, `salesman.b@demo.com`, `accountant@demo.com`, and `owner@demo.com`. Login at `POST /api/auth/login` and use the token as `Authorization: Bearer <token>`.
+- Master data reads require authentication; writes are ADMIN-only. SALESMAN customer reads are assignment-scoped. BOM reads allow ADMIN/PRODUCTION/ACCOUNTANT/OWNER; writes allow ADMIN/PRODUCTION.
+- BOM planning: `GET /api/boms/:id/plan` with exactly one mode, `?batches=2.5`, `?targetOutput=300`, or `?itemId=1&qty=20&unit=kg`; max 100 batches.
+- `GET /api/audit` requires ADMIN/ACCOUNTANT/OWNER; supports entity/user/date filters and pagination (limit max 100).
+- Check `src/lib` for `parseFloat`/`toFixed` with `rg -n "parseFloat|toFixed" src/lib` (expect no matches).
+- Append-only trigger check: `docker compose exec -it db psql -U oda -d oda`, then `UPDATE "StockMovement" SET "qtyChange" = 1;` (must fail).
 - Copy `backend/.env.example` to `backend/.env` and set a private JWT secret before use.
 
 ## Step checklist (tick when DONE and VERIFIED)
 ### Phase 1 - Foundation
-[x] 01 Monorepo scaffold, Docker Postgres, health check
-[x] 02 Prisma schema A: users, units, items, customers, suppliers, settings
-[x] 03 Prisma schema B: BOM, purchases, production runs, stock ledger, audit log
-[x] 04 Prisma schema C: orders, invoices, dispatch, payments, credit notes, counters
-[x] 05 Money, GST, units and variance libraries + unit tests
-[x] 06 Seed script with the section 5 benchmark master data
-[x] 07 Login, JWT and role middleware
-[x] 08 Validation, error handling and audit-log helper
+01-08 [x]: scaffold/health; identity and master-data schema; BOM/production/ledger schema; sales schema; money/GST/units/variance; benchmark seed; auth/RBAC; validation/errors/audit.
 ### Phase 2 - Stock ledger and purchases
-[x] 09 Ledger service (addMovement, balances, running ledger) + tests
-[x] 10 Stock summary and ledger APIs + benchmark-check script
-[x] 11 Document numbering service (financial-year counters)
-[x] 12 Purchase API with supplier and per-unit rates
-[x] 13 Stock adjustment API (reason + audit)
-[x] 14 Master data CRUD APIs (items, customers, suppliers, settings, users)
+09-14 [x]: ledger service; stock APIs/benchmark checker; FY numbering; purchases; adjustments; master-data APIs.
 ### Phase 3 - BOM and production (highest weight)
-[x] 15 BOM API (create, view, update)
-[x] 16 Planned-consumption calculator (scale BOM by batches) + tests
-[ ] 17 Production run: start and issue materials
-[ ] 18 Production run: complete with actual output, scrap, damaged
-[ ] 19 Variance engine and tolerance flags (per material and yield)
-[ ] 20 Production run list, detail, cancel and audit trail
-[ ] 21 Automated benchmark test: steps 1 to 3
+15-16 [x]: BOM CRUD/versioning/cloning; planned-consumption calculator.
+17 [ ] production start/issues; 18 [ ] completion/output/scrap; 19 [ ] variance/tolerance; 20 [ ] run list/detail/cancel; 21 [ ] benchmark steps 1-3.
 ### Phase 4 - Sales loop
-[ ] 22 Price resolution (customer price, then default)
-[ ] 23 Salesman order create API (idempotent clientRef)
-[ ] 24 Order list and status APIs per role
-[ ] 25 Finished-goods availability and shortage check
-[ ] 26 Admin edit, approve and reject order
-[ ] 27 GST calculation service (CGST/SGST vs IGST) wired to lines
-[ ] 28 Create GST invoice from approved order (FY numbering)
-[ ] 29 Dispatch: reduce finished-goods stock (partial optional)
-[ ] 30 Payments and customer outstanding
-[ ] 31 Cancel invoice with credit note and stock reversal
-[ ] 32 Insufficient-stock flow (Distributor B, IGST)
-[ ] 33 Automated benchmark test: steps 4 to 7
+22-33 [ ] price resolution; orders; order roles/status; availability; approval; GST; invoicing; dispatch; payments; credit notes; shortage flow; benchmark steps 4-7.
 ### Phase 5 - Costing
-[ ] 34 Weighted-average cost service
-[ ] 35 Overheads per run and allocation rule
-[ ] 36 Cost per packet and margin API + test
+34-36 [ ] weighted average; overhead allocation; packet cost/margin.
 ### Phase 6 - Reports and PDF
-[ ] 37 Sales register
-[ ] 38 Customer-wise and product-wise sales
-[ ] 39 GST summary (GSTR-1 / GSTR-3B shape)
-[ ] 40 Stock summary and stock ledger reports
-[ ] 41 Purchase register
-[ ] 42 Production report (planned vs actual, yield, wastage)
-[ ] 43 Outstanding receivables with ageing
-[ ] 44 CSV/Excel export utility for every report
-[ ] 45 GST invoice PDF
+37-45 [ ] sales/customer/product/GST/stock/purchase/production/receivables reports; exports; invoice PDF.
 ### Phase 7 - Frontend
-[ ] 46 Frontend base: router, auth context, API client, role layouts
-[ ] 47 Login page and role redirect
-[ ] 48 Salesman mobile order screen
-[ ] 49 Salesman my orders and customer-wise sales
-[ ] 50 Admin orders inbox and approval screen
-[ ] 51 Admin invoice, dispatch and payment screens
-[ ] 52 Production screens: BOM view, new run, actual output
-[ ] 53 Stock summary and ledger pages
-[ ] 54 Reports pages with date filter and export
-[ ] 55 Owner dashboard
-[ ] 56 Variance alerts and low-stock indicators
+46-56 [ ] router/auth/role layouts; login; salesman orders/customers; admin orders/invoices; production/stock/reports pages; dashboard/alerts.
 ### Phase 8 - Ship
-[ ] 57 End-to-end benchmark script (all 9 steps) + final fixes
-[ ] 58 Docker Compose full stack + deployment
-[ ] 59 README and 2-page design note
-[ ] 60 Demo video script, interview rehearsal sheet, final audit
+57-60 [ ] full benchmark/fixes; deployment; README/design note; demo/interview/final audit.
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
 - Step 16 (2026-11-24): Added pure Decimal-based batch, target-output, and issued-material BOM planning with half-up integer base quantities, plus a role-gated plan endpoint for all three exclusive query modes. Pure and API tests pass; full `npm test` passes (84). Assumption: plan responses serialize batchCount as a decimal string to preserve precision.
 - Step 15 (2026-11-24): Added role-gated BOM list/detail/create/update/clone APIs, unit-to-base conversion, single-active versioning, and audit writes; used BOM edits create a new version. Added coverage for seeded recipe display, invalid types, history, cloning, and role denial. `npm test` passes (78); live production login showed the expected 200-yield recipe quantities.
-- Step 14 (2026-11-24): Added audited item, customer/price, supplier, settings, and ADMIN user APIs with Zod validation and role gates; salesman customer access is assignment-scoped. Added state-code validation and focused API tests. `npm test` passes (71 tests); no schema changes. Assumption: customer price PUT accepts `{ prices: [...] }` and upserts only the submitted items.
-- Step 13 (2026-11-24): Added the numbered StockAdjustment model/migration and documented its source traceability. Added role-gated adjustment create/list routes; IN/OUT append ledger rows at weighted-average rates and audit before/after balances transactionally. `npm test` passes (64); Prisma migration status is up to date.
-- Step 12 (2026-11-24): Added an atomic purchase API with unit/rate conversion, purchase-ledger entries and audit, plus exact weighted-average rates; added list/detail reads and extended the after-purchase benchmark checks. Verified `seed:reset`, production login/60 kg flour POST, and benchmark PASS (4 checks); `npm test` passes (59).
-- Step 11 (2026-11-24): Added Asia/Kolkata financial-year helpers and an atomic `DocumentCounter` service; added FY boundary, independent/reset counters, >9999, rollback, and concurrency tests. `npm test` passes (52 tests); no routes or schema changes.
-- Step 10 (2026-11-24): Added capability-protected stock summary, running ledger, per-item balance, and finished availability routes; salesmen receive finished goods only and availability subtracts outstanding reservations. Added staged benchmark checker. `npm test` passes (42); opening benchmark is PASS (6 checks); live salesman summary/availability returned 403/200.
-- Step 09 (2026-11-24): Added transaction-safe ledger writes/balances/running ledger, item-row locking for outflows, and the append-only UPDATE/DELETE trigger. Routed seed openings through the service; added isolated `oda_test` reset/seed helpers and concurrency/trigger tests. `npm test` passes (37); repeated seed kept six openings.
-- Step 08 (2026-11-24): Added Zod request validation, shared AppError helpers/error handler, async route wrapper, and transaction-compatible JSON-safe audit helper; audited successful/failed logins and added the capability-protected audit listing. Refactored auth/health routes. `npm test` passes (29); live 404, demo login, and audit lookup verified.
-- Step 07 (2026-11-24): Added JWT login, active-user authentication, role/capability middleware and test-only auth endpoints; added `jsonwebtoken`. Added Supertest coverage for login, invalid credentials, missing/deactivated/deleted users, role and capability checks. `npm test` passes (23); live demo login and `/api/auth/me` returned ADMIN successfully.
-- Step 06 (2026-11-24): Added `backend/prisma/seed.js`, `backend/scripts/reset-db.js`, and `backend/scripts/print-balances.js`; wired bcryptjs and npm/Prisma scripts. Verified balances, repeat seeding, password/assignment/BOM/opening values, production refusal, and expected record counts; `npm test` passes (16). Prisma 6 warns the requested seed config is deprecated for Prisma 7.
-- Step 05 (2026-11-24): Added `backend/src/lib/{money,gst,units,variance}.js` and four suites under `backend/tests/lib/`. `npm test` passes (16 tests); `rg -n "parseFloat|toFixed" src/lib` finds no matches. Assumption: `sumInvoice` lines contain taxable paise, GST basis points, and an inter-state flag.
-- Step 04 (2026-11-24): Added order, invoice, dispatch, payment, credit-note, and document-counter models; documented invoice snapshots and credit-note cancellation. Added migration `20261124103152_sales_loop`; format, validate, migrate, and Prisma Client generation succeeded. Decision: no round-off line; GST is computed per line, then summed. No APIs or seeds.
-- Step 03 (2026-11-24): Added BOM, purchase, production, stock-ledger, and audit-log models plus the Mermaid model and six-line explanation. Migration `20261124102201_ledger_bom_production` is applied and Prisma Client generated. `npx prisma migrate status` reports up to date; `npm test` passes (1 test).
-- Step 01 (2026-11-24): Added root npm scripts/ignore rules, Postgres Compose service, Node/Express/Prisma API and health test, and React/Vite/Tailwind UI with API status. Added package manifests/lockfiles and backend env example/local env.
-- Verified: Prisma client generation; `npm test`; frontend production build; `docker compose config --quiet`; Compose database health. The initial host mapping collided with the Windows PostgreSQL service on port 5432; Compose now uses host port 5433.
-- Initial layout assumption (resolved): supplied guidance was under `starter-kit/`; housekeeping moved it and the project docs to the repository root.
-- Step 02 (2026-11-24): Added identity/master-data enums and models, indexes, relation names, initial migration, and Mermaid data-model note. Prisma format/validate and backend tests passed; migration applied to the Compose database over its Docker network.
-- Limitation: Direct host migration hit the pre-existing PostgreSQL on port 5432; Prisma Client generation is blocked while a running backend process holds its Windows engine DLL.
-- Housekeeping (2026-11-24): Moved `AGENTS.md` and `starter-kit/docs/*` into the repository root locations, preserving the existing `docs/DATA_MODEL.md`; configured PostgreSQL host port 5433.
-- Verified `npm run db:up`, `npx prisma migrate status` (up to date), and `npm test`; `npx prisma generate` still fails because a running process locks the Windows query-engine DLL.
+- Step 14 (2026-11-24): Added audited master-data CRUD and role policies; key files `masterDataService.js`, `settingsService.js`, `userService.js`, master-data routes, and `tests/masterData.test.js`.
+- Step 13 (2026-11-24): Added numbered stock adjustments and transactional ledger/audit APIs; key files `adjustmentService.js`, `routes/stock.js`, adjustment migration, and `tests/adjustment.test.js`.
+- Step 12 (2026-11-24): Added purchase receipts, weighted-average costing, and benchmark checks; key files `purchaseService.js`, `costingService.js`, `routes/purchases.js`, and `tests/purchase.test.js`.
+- Step 11 (2026-11-24): Added Asia/Kolkata FY helpers and atomic document counters; key files `lib/fy.js`, `numberingService.js`, and numbering/FY tests.
+- Step 10 (2026-11-24): Added stock read APIs and staged benchmark checker; key files `routes/stock.js`, `stockService.js`, `scripts/benchmark-check.js`, and `tests/stock.test.js`.
+- Step 09 (2026-11-24): Added transaction-safe append-only stock ledger, DB trigger, and isolated test DB helpers; key files `ledgerService.js`, trigger migration, `tests/helpers/db.js`, and ledger tests.
+- Step 08 (2026-11-24): Added validation, shared errors, async handling, audit helper, and audit API; key files `lib/errors.js`, `lib/audit.js`, middleware, and `routes/audit.js`.
+- Step 07 (2026-11-24): Added JWT authentication and role/capability middleware; key files `authService.js`, `middleware/auth.js`, `routes/auth.js`, permissions, and `tests/auth.test.js`.
+- Step 06 (2026-11-24): Added benchmark seeding and database maintenance tools; key files `prisma/seed.js`, `scripts/reset-db.js`, and `scripts/print-balances.js`.
+- Step 05 (2026-11-24): Added money, GST, unit, and variance helpers with tests; key files `src/lib/{money,gst,units,variance}.js` and `tests/lib/`.
+- Step 04 (2026-11-24): Added order/sales schema and migration; key files `prisma/schema.prisma`, migration `20261124103152_sales_loop`, and `docs/DATA_MODEL.md`.
+- Step 03 (2026-11-24): Added BOM, purchase, production, ledger, and audit schema; key files `prisma/schema.prisma`, migration `20261124102201_ledger_bom_production`, and `docs/DATA_MODEL.md`.
+- Step 02 (2026-11-24): Added identity/master-data schema and initial migration; key files `prisma/schema.prisma`, initial migration, and `docs/DATA_MODEL.md`.
+- Step 01 (2026-11-24): Scaffolded Node/Express/Prisma API, React/Vite UI, and Docker Postgres; key files root/backend/frontend manifests, `docker-compose.yml`, and health test.
 
 ## File map (path - purpose)
-- `AGENTS.md` - repository instructions.
-- `package.json`, `.gitignore`, `docker-compose.yml` - root scripts, ignore rules, and PostgreSQL service.
-- `backend/` - Node ES-module API, Prisma client/schema/migrations, health/auth routes and middleware, pure money/GST/units/variance libraries, benchmark seed/reset/balance utilities, and tests.
-- `backend/prisma/seed.js` - idempotent units, settings, master data, demo users, BOM, and opening ledger movements.
-- `backend/scripts/` - production-guarded database reset/reseed and display-unit balance reporting.
-- `backend/src/config/permissions.js` - centralized role list and capability matrix.
-- `backend/src/services/authService.js`, `backend/src/middleware/auth.js`, `backend/src/routes/auth.js` - credential login, JWT issuance/verification, authorization checks, and auth endpoints.
-- `backend/src/services/ledgerService.js` - the only application service that creates stock movements; provides locked outflows, balances, and running ledger rows.
-- `backend/src/services/stockService.js`, `backend/src/routes/stock.js` - finished-goods availability and capability-protected stock APIs.
-- `backend/src/services/adjustmentService.js`, `backend/src/routes/stock.js` - create auditable stock corrections as numbered ADJUSTMENT ledger entries and list them by item/date.
-- `backend/src/services/costingService.js` - weighted-average paise-per-base-unit rates from dated priced receipts, without rounded ledger values.
-- `backend/src/services/purchaseService.js`, `backend/src/routes/purchases.js` - transactionally create/list/read purchases, record receipts through the ledger service, and return display quantities/amounts.
-- `backend/src/services/masterDataService.js`, `backend/src/routes/{items,customers,suppliers}.js` - audited item/customer/price/supplier CRUD and salesman-assignment visibility.
-- `backend/src/services/bomService.js`, `backend/src/routes/boms.js` - validated BOM reads, input conversion to base quantities, version-safe edits, and pack-size cloning.
-- `backend/src/lib/bomMath.js` - pure Decimal batch scaling, target-output and issue-based consumption planning.
-- `backend/src/services/settingsService.js`, `backend/src/routes/settings.js` - whitelist-validated settings reads/writes with transactional audit.
-- `backend/src/services/userService.js`, `backend/src/routes/users.js` - ADMIN user management, bcrypt password hashing/reset, and password-hash-safe responses.
-- `backend/src/lib/states.js` - supported Indian state-code/name map used by customer, supplier, and GSTIN validation.
-- `backend/src/lib/fy.js` - Asia/Kolkata financial-year lookup and UTC IST-midnight range boundaries.
-- `backend/src/services/numberingService.js` - `nextNumber(tx, 'INV', invoiceDate)` atomically increments the financial-year counter inside the caller's document transaction.
-- `backend/scripts/benchmark-check.js` - table-driven PASS/FAIL/SKIPPED checks for benchmark stages; run with `npm run bench:check -- --stage=opening`.
-- `backend/src/lib/errors.js`, `asyncHandler.js`, `audit.js`; `backend/src/middleware/validate.js`, `errorHandler.js` - shared errors, async route handling, validation, and transaction-aware audit writes.
-- `backend/src/routes/audit.js` - capability-protected, filtered and paginated audit log listing.
-- `backend/tests/helpers/db.js`, `tests/setup.js`, `vitest.config.js` - guarded `oda_test` database reset/seeding and Vitest isolation.
-- `backend/tests/` - master-data, adjustment and purchase API/costing, stock API, ledger, numbering/FY, auth, audit, middleware/error, and pure library Vitest coverage.
-- `backend/tests/lib/bomMath.test.js`, `backend/tests/boms.test.js` - pure planned-consumption calculations and BOM plan endpoint coverage.
-- `backend/prisma/migrations/20261124115051_ledger_append_only/` - database trigger preventing stock-movement updates and deletes.
-- `backend/prisma/migrations/20261124125050_stock_adjustment/` - numbered stock-adjustment source records and item/user relations.
-- `frontend/` - Vite/React UI, Tailwind v3/PostCSS, API client, and `/api` proxy.
-- `docs/` - project context, progress tracker, step prompts, and Mermaid data-model note, now including BOM/purchase/production/ledger/audit/sales entities and invoice/cancellation notes.
+- Root: `AGENTS.md`, `package.json`, `.gitignore`, `docker-compose.yml` - project rules, scripts, ignores, and Postgres.
+- `docs/`: AI context, progress, step prompts, and Mermaid data model.
+- `backend/prisma/`: schema, migrations (including append-only trigger and stock adjustments), and idempotent benchmark seed.
+- `backend/scripts/`: guarded reset/reseed, balance output, and staged benchmark checker.
+- `backend/src/config/`, `middleware/`: role/capability matrix, auth, validation, and centralized error handling.
+- `backend/src/lib/`: Decimal money/GST/units/variance/BOM math, FY, states, errors, audit, and async helpers.
+- `backend/src/routes/`: health, auth, audit, stock/adjustments, purchases, BOMs, items, customers/prices, suppliers, settings, and users.
+- `backend/src/services/`: auth, append-only ledger, stock availability, adjustment, purchase/costing, BOM, master data, settings, and user logic.
+- `backend/tests/`: API/unit suites; `helpers/db.js` and setup guard test operations to `oda_test`.
+- `frontend/`: Vite/React UI, Tailwind, API client, and `/api` proxy.
 
 ## API endpoints (METHOD path - roles - purpose)
-- `GET /api/health` - public - API/database status and ISO timestamp; HTTP 200 if the database query fails.
-- `POST /api/auth/login` - public - validate credentials and return a 12-hour JWT with the user summary.
-- `GET /api/auth/me` - any authenticated user - return the current active user loaded from the database.
-- `GET /api/audit` - ADMIN, ACCOUNTANT, OWNER - newest-first audit rows with optional entity, entityId, userId, from/to, page, and limit filters; includes user name.
-- `GET /api/stock/summary?type=RAW|PACKAGING|FINISHED` - ADMIN, PRODUCTION, ACCOUNTANT, OWNER - balances in base integers and display strings.
-- `GET /api/stock/ledger?itemId=&from=&to=` - ADMIN, PRODUCTION, ACCOUNTANT, OWNER - running movement ledger with base quantities and display strings.
-- `GET /api/stock/items/:id/balance` - ADMIN, PRODUCTION, ACCOUNTANT, OWNER - one item's base and display balance.
-- `GET /api/stock/finished-availability` - SALESMAN plus stock-read roles - finished goods only; subtracts quantities reserved by approved/invoiced orders.
-- `POST /api/purchases` - PRODUCTION, ADMIN - create a supplier receipt; converts entered units/rates and writes PURCHASE ledger movements and a CREATE audit row atomically.
-- `GET /api/purchases?page=&limit=&from=&to=&supplierId=` - PRODUCTION, ADMIN, ACCOUNTANT, OWNER - filtered, paginated purchase list with line display strings.
-- `GET /api/purchases/:id` - PRODUCTION, ADMIN, ACCOUNTANT, OWNER - purchase detail and display strings.
-- `POST /api/stock/adjustments` - ADMIN, PRODUCTION - append a reason-coded, numbered stock correction and audit its before/after balances.
-- `GET /api/stock/adjustments?itemId=&from=&to=&page=&limit=` - ADMIN, PRODUCTION, ACCOUNTANT, OWNER - paginated adjustment history with display quantities.
-- `GET /api/items?type=&active=`, `GET /api/items/:id` - all authenticated roles; filter/list and read item details.
-- `POST /api/items`, `PATCH /api/items/:id` - ADMIN - create/update items; nonzero-stock items cannot be deactivated.
-- `GET /api/customers?type=&active=`, `GET /api/customers/:id` - all authenticated roles; SALESMAN sees assigned customers only.
-- `POST /api/customers`, `PATCH /api/customers/:id` - ADMIN - create/update customers with state/GSTIN validation.
-- `GET /api/customers/:id/prices` - all authenticated roles; SALESMAN is limited to assigned customers. `PUT /api/customers/:id/prices` - ADMIN - upsert item prices.
-- `GET /api/suppliers`, `GET /api/suppliers/:id` - all authenticated roles. `POST /api/suppliers`, `PATCH /api/suppliers/:id` - ADMIN.
-- `GET /api/settings` - all authenticated roles. `PUT /api/settings/:key` - ADMIN; key is whitelisted and audited.
-- `GET /api/users`, `POST /api/users`, `PATCH /api/users/:id`, `POST /api/users/:id/reset-password` - ADMIN; response payloads never include password hashes.
-- `GET /api/boms?finishedItemId=&active=` - ADMIN, PRODUCTION, ACCOUNTANT, OWNER - list/filter recipes with component base quantities and display strings.
-- `GET /api/boms/:id` - ADMIN, PRODUCTION, ACCOUNTANT, OWNER - recipe detail including named component lines and batch yield.
-- `POST /api/boms` - ADMIN, PRODUCTION - create the next recipe version and activate it for the finished item.
-- `PUT /api/boms/:id` - ADMIN, PRODUCTION - replace an unused recipe in place, or create a new active version if production runs reference it.
-- `POST /api/boms/:id/clone` - ADMIN, PRODUCTION - clone a recipe to another finished item with line overrides and component replacements.
-- `GET /api/boms/:id/plan?batches=2.5` - BOM read roles - return planned base quantities and output for a batch count.
-- `GET /api/boms/:id/plan?targetOutput=300` - BOM read roles - infer and apply a four-decimal batch count for a target packet quantity.
-- `GET /api/boms/:id/plan?itemId=1&qty=20&unit=kg` - BOM read roles - infer batches from an issued ingredient quantity, converting its unit to base.
-- `GET /api/_whoami`, `GET /api/_admin-only`, `GET /api/_approve-only` - test environment only - exercise authentication, role, and capability gates.
-- No endpoints added in Steps 03-04 (schema/documentation only).
-- Step 05 adds pure functions only; no endpoints.
-- Step 06 adds seed and maintenance scripts only; no endpoints.
-- Step 09 adds the ledger service only; no endpoints.
-- Finished availability subtracts outstanding approved/invoiced quantities, including partial dispatches, from the finished-goods ledger balance.
-- Step 11 adds financial-year and number-generation helpers only; no API endpoints were added.
-- Purchase amounts are computed from rates converted to paise per base unit and rounded at the line level; weighted averages use stored Decimal rates times quantities rather than rounded `valuePaise`.
-- Adjustment quantity is entered as a positive magnitude; `direction` determines the signed base-unit `qtyChange`.
-- The adjustment record's `createdAt` is its effective date; the corresponding ledger `movementDate` uses the same UTC instant.
+- `/api/health`: `GET /` public. `/api/auth`: `POST /login` public; `GET /me` any authenticated user.
+- `/api/audit`: `GET /` ADMIN/ACCOUNTANT/OWNER; newest-first filtered/paginated rows with user name.
+- `/api/stock`: `GET /summary?type=`, `/ledger?itemId=&from=&to=`, `/items/:id/balance` ADMIN/PRODUCTION/ACCOUNTANT/OWNER; `GET /finished-availability` also SALESMAN; `POST /adjustments` ADMIN/PRODUCTION; `GET /adjustments` stock-read roles.
+- `/api/purchases`: `POST /` PRODUCTION/ADMIN; `GET /?page=&limit=&from=&to=&supplierId=` and `GET /:id` PRODUCTION/ADMIN/ACCOUNTANT/OWNER. Receipts write ledger and audit atomically.
+- `/api/items`: `GET /?type=&active=`, `GET /:id` authenticated; `POST /`, `PATCH /:id` ADMIN.
+- `/api/customers`: `GET /?type=&active=`, `GET /:id`, `GET /:id/prices` authenticated (salesmen assigned customers only); `POST /`, `PATCH /:id`, `PUT /:id/prices` ADMIN.
+- `/api/suppliers`: `GET /?active=`, `GET /:id` authenticated; `POST /`, `PATCH /:id` ADMIN. `/api/settings`: `GET /` authenticated; `PUT /:key` ADMIN.
+- `/api/users`: `GET /`, `POST /`, `PATCH /:id`, `POST /:id/reset-password` ADMIN; responses omit password hashes.
+- `/api/boms`: `GET /?finishedItemId=&active=`, `GET /:id`, `GET /:id/plan` ADMIN/PRODUCTION/ACCOUNTANT/OWNER; `POST /`, `PUT /:id`, `POST /:id/clone` ADMIN/PRODUCTION. Plan accepts exactly one of `?batches=`, `?targetOutput=`, or `?itemId=&qty=&unit=`.
+- Test-only: `GET /api/_whoami`, `/api/_admin-only`, `/api/_approve-only`.
+- Stock availability subtracts outstanding approved/invoiced reservations; purchase cost averages use Decimal rates; adjustment quantities are positive magnitudes with IN/OUT direction, and adjustment history uses `createdAt`.
 
 ## Decisions (deviations from AI_CONTEXT.md and why)
 - DB host port is 5433 because the Windows PostgreSQL service occupies 5432
@@ -219,6 +100,7 @@ Step 17 - Production run: start and issue materials
 - Opening finished goods are valued at Rs 30/packet (3000 paise), as the brief provides no cost.
 - `seed:reset` preserves Prisma's `_prisma_migrations` table while truncating application tables.
 - Purchase request quantities and rupee rates are decimal strings, keeping input conversion independent of binary floating-point.
+- Customer price PUT accepts `{ prices: [...] }` and upserts only the submitted item prices.
 - BOM PUT preserves existing notes when omitted; clone copies source notes. Clone line overrides apply only to items present after the requested replacements.
 - Plan endpoint requires exactly one mode; issued quantities are interpreted in the selected BOM item's dimension and converted to base units.
 
