@@ -13,10 +13,16 @@
     "test:watch": "vitest",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
+    "seed": "node prisma/seed.js",
+    "seed:reset": "node scripts/reset-db.js",
+    "balances": "node scripts/print-balances.js"
+  },
+  "prisma": {
     "seed": "node prisma/seed.js"
   },
   "dependencies": {
     "@prisma/client": "^6.19.0",
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "decimal.js": "^10.5.0",
     "dotenv": "^16.4.7",
