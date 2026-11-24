@@ -2,7 +2,7 @@
 Last updated: 2026-11-24 by Copilot
 
 ## Next Step
-Step 14 - Master data CRUD APIs (items, customers, suppliers, settings, users)
+Step 15 - BOM API (create, view, update)
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install` and `npm --prefix frontend install`.
@@ -29,6 +29,7 @@ Step 14 - Master data CRUD APIs (items, customers, suppliers, settings, users)
   | OWNER | `owner@demo.com` |
 - Login with `POST /api/auth/login`, then send its token as `Authorization: Bearer <token>` to `GET /api/auth/me`.
 - `GET /api/audit` requires ADMIN, ACCOUNTANT, or OWNER; supports entity/user/date filters and pagination (`limit` max 100).
+- Master data reads require authentication; ADMIN writes through `/api/items`, `/api/customers`, `/api/suppliers`, `/api/settings`, and `/api/users`. SALESMAN customer reads are limited to assigned customers.
 - Check library source for float parsing/formatting: from `backend/`, run `rg -n "parseFloat|toFixed" src/lib` (expect no matches).
 - Run Prisma commands from `backend/`: `npx prisma format`, `npx prisma validate`, `npx prisma migrate dev`, `npx prisma migrate status`.
 - To check the append-only trigger, connect with `docker compose exec -it db psql -U oda -d oda` and run `UPDATE "StockMovement" SET "qtyChange" = 1;` (it must raise an error).
@@ -50,7 +51,7 @@ Step 14 - Master data CRUD APIs (items, customers, suppliers, settings, users)
 [x] 11 Document numbering service (financial-year counters)
 [x] 12 Purchase API with supplier and per-unit rates
 [x] 13 Stock adjustment API (reason + audit)
-[ ] 14 Master data CRUD APIs (items, customers, suppliers, settings, users)
+[x] 14 Master data CRUD APIs (items, customers, suppliers, settings, users)
 ### Phase 3 - BOM and production (highest weight)
 [ ] 15 BOM API (create, view, update)
 [ ] 16 Planned-consumption calculator (scale BOM by batches) + tests
@@ -105,6 +106,7 @@ Step 14 - Master data CRUD APIs (items, customers, suppliers, settings, users)
 [ ] 60 Demo video script, interview rehearsal sheet, final audit
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
+- Step 14 (2026-11-24): Added audited item, customer/price, supplier, settings, and ADMIN user APIs with Zod validation and role gates; salesman customer access is assignment-scoped. Added state-code validation and focused API tests. `npm test` passes (71 tests); no schema changes. Assumption: customer price PUT accepts `{ prices: [...] }` and upserts only the submitted items.
 - Step 13 (2026-11-24): Added the numbered StockAdjustment model/migration and documented its source traceability. Added role-gated adjustment create/list routes; IN/OUT append ledger rows at weighted-average rates and audit before/after balances transactionally. `npm test` passes (64); Prisma migration status is up to date.
 - Step 12 (2026-11-24): Added an atomic purchase API with unit/rate conversion, purchase-ledger entries and audit, plus exact weighted-average rates; added list/detail reads and extended the after-purchase benchmark checks. Verified `seed:reset`, production login/60 kg flour POST, and benchmark PASS (4 checks); `npm test` passes (59).
 - Step 11 (2026-11-24): Added Asia/Kolkata financial-year helpers and an atomic `DocumentCounter` service; added FY boundary, independent/reset counters, >9999, rollback, and concurrency tests. `npm test` passes (52 tests); no routes or schema changes.
@@ -137,13 +139,17 @@ Step 14 - Master data CRUD APIs (items, customers, suppliers, settings, users)
 - `backend/src/services/adjustmentService.js`, `backend/src/routes/stock.js` - create auditable stock corrections as numbered ADJUSTMENT ledger entries and list them by item/date.
 - `backend/src/services/costingService.js` - weighted-average paise-per-base-unit rates from dated priced receipts, without rounded ledger values.
 - `backend/src/services/purchaseService.js`, `backend/src/routes/purchases.js` - transactionally create/list/read purchases, record receipts through the ledger service, and return display quantities/amounts.
+- `backend/src/services/masterDataService.js`, `backend/src/routes/{items,customers,suppliers}.js` - audited item/customer/price/supplier CRUD and salesman-assignment visibility.
+- `backend/src/services/settingsService.js`, `backend/src/routes/settings.js` - whitelist-validated settings reads/writes with transactional audit.
+- `backend/src/services/userService.js`, `backend/src/routes/users.js` - ADMIN user management, bcrypt password hashing/reset, and password-hash-safe responses.
+- `backend/src/lib/states.js` - supported Indian state-code/name map used by customer, supplier, and GSTIN validation.
 - `backend/src/lib/fy.js` - Asia/Kolkata financial-year lookup and UTC IST-midnight range boundaries.
 - `backend/src/services/numberingService.js` - `nextNumber(tx, 'INV', invoiceDate)` atomically increments the financial-year counter inside the caller's document transaction.
 - `backend/scripts/benchmark-check.js` - table-driven PASS/FAIL/SKIPPED checks for benchmark stages; run with `npm run bench:check -- --stage=opening`.
 - `backend/src/lib/errors.js`, `asyncHandler.js`, `audit.js`; `backend/src/middleware/validate.js`, `errorHandler.js` - shared errors, async route handling, validation, and transaction-aware audit writes.
 - `backend/src/routes/audit.js` - capability-protected, filtered and paginated audit log listing.
 - `backend/tests/helpers/db.js`, `tests/setup.js`, `vitest.config.js` - guarded `oda_test` database reset/seeding and Vitest isolation.
-- `backend/tests/` - adjustment and purchase API/costing, stock API, ledger, numbering/FY, auth, audit, middleware/error, and pure library Vitest coverage.
+- `backend/tests/` - master-data, adjustment and purchase API/costing, stock API, ledger, numbering/FY, auth, audit, middleware/error, and pure library Vitest coverage.
 - `backend/prisma/migrations/20261124115051_ledger_append_only/` - database trigger preventing stock-movement updates and deletes.
 - `backend/prisma/migrations/20261124125050_stock_adjustment/` - numbered stock-adjustment source records and item/user relations.
 - `frontend/` - Vite/React UI, Tailwind v3/PostCSS, API client, and `/api` proxy.
@@ -163,6 +169,14 @@ Step 14 - Master data CRUD APIs (items, customers, suppliers, settings, users)
 - `GET /api/purchases/:id` - PRODUCTION, ADMIN, ACCOUNTANT, OWNER - purchase detail and display strings.
 - `POST /api/stock/adjustments` - ADMIN, PRODUCTION - append a reason-coded, numbered stock correction and audit its before/after balances.
 - `GET /api/stock/adjustments?itemId=&from=&to=&page=&limit=` - ADMIN, PRODUCTION, ACCOUNTANT, OWNER - paginated adjustment history with display quantities.
+- `GET /api/items?type=&active=`, `GET /api/items/:id` - all authenticated roles; filter/list and read item details.
+- `POST /api/items`, `PATCH /api/items/:id` - ADMIN - create/update items; nonzero-stock items cannot be deactivated.
+- `GET /api/customers?type=&active=`, `GET /api/customers/:id` - all authenticated roles; SALESMAN sees assigned customers only.
+- `POST /api/customers`, `PATCH /api/customers/:id` - ADMIN - create/update customers with state/GSTIN validation.
+- `GET /api/customers/:id/prices` - all authenticated roles; SALESMAN is limited to assigned customers. `PUT /api/customers/:id/prices` - ADMIN - upsert item prices.
+- `GET /api/suppliers`, `GET /api/suppliers/:id` - all authenticated roles. `POST /api/suppliers`, `PATCH /api/suppliers/:id` - ADMIN.
+- `GET /api/settings` - all authenticated roles. `PUT /api/settings/:key` - ADMIN; key is whitelisted and audited.
+- `GET /api/users`, `POST /api/users`, `PATCH /api/users/:id`, `POST /api/users/:id/reset-password` - ADMIN; response payloads never include password hashes.
 - `GET /api/_whoami`, `GET /api/_admin-only`, `GET /api/_approve-only` - test environment only - exercise authentication, role, and capability gates.
 - No endpoints added in Steps 03-04 (schema/documentation only).
 - Step 05 adds pure functions only; no endpoints.
@@ -199,6 +213,7 @@ Step 14 - Master data CRUD APIs (items, customers, suppliers, settings, users)
 - Numbering is gap-free only when `nextNumber` receives the transaction client and shares the document write's transaction; document routes are not implemented yet.
 - Purchases currently support create and read only; edit, cancellation, and purchase-return workflows are not implemented.
 - Adjustments have no editable effective date; history filtering uses the recorded `createdAt`, and corrections always append rather than update or delete.
+- Master data has no hard-delete endpoints; item deactivation is rejected while ledger balance is nonzero.
 
 ## Benchmark status (stage: PASS/FAIL/SKIPPED)
 opening PASS (6 checks; later-stage checks skipped)
