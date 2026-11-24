@@ -6,9 +6,11 @@ import {
   requireCapability,
   requireRole
 } from './middleware/auth.js';
-import { AppError } from './lib/errors.js';
+import { notFound } from './lib/errors.js';
 import authRouter from './routes/auth.js';
+import auditRouter from './routes/audit.js';
 import healthRouter from './routes/health.js';
+import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
 
@@ -23,6 +25,7 @@ app.use((req, res, next) => {
 
 app.use('/api', healthRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/audit', auditRouter);
 
 if (process.env.NODE_ENV === 'test') {
   app.get('/api/_whoami', authenticate, (req, res) => {
@@ -41,32 +44,7 @@ if (process.env.NODE_ENV === 'test') {
   );
 }
 
-app.use((_req, res) => {
-  res.status(404).json({
-    error: {
-      code: 'NOT_FOUND',
-      message: 'Route not found',
-      details: null
-    }
-  });
-});
-
-app.use((error, _req, res, next) => {
-  if (res.headersSent) {
-    return next(error);
-  }
-
-  const isAppError = error instanceof AppError;
-  if (!isAppError) {
-    console.error(error);
-  }
-  return res.status(isAppError ? error.statusCode : 500).json({
-    error: {
-      code: isAppError ? error.code : 'INTERNAL_SERVER_ERROR',
-      message: isAppError ? error.message : 'Internal server error',
-      details: isAppError ? error.details : null
-    }
-  });
-});
+app.use((_req, _res, next) => next(notFound('Route not found')));
+app.use(errorHandler);
 
 export { app };

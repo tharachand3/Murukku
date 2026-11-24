@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { config } from '../config/env.js';
 import { AppError } from '../lib/errors.js';
+import { writeAudit } from '../lib/audit.js';
 import { prisma } from '../lib/prisma.js';
 
 function invalidCredentials() {
@@ -14,12 +15,17 @@ export async function login(email, password) {
     where: { email: normalizedEmail }
   });
 
-  if (!user) {
-    throw invalidCredentials();
-  }
-
-  const passwordMatches = await bcrypt.compare(password, user.passwordHash);
-  if (!passwordMatches || !user.isActive) {
+  const passwordMatches = user
+    ? await bcrypt.compare(password, user.passwordHash)
+    : false;
+  if (!user || !passwordMatches || !user.isActive) {
+    await writeAudit(prisma, {
+      userId: user?.id,
+      action: 'LOGIN_FAILURE',
+      entity: 'User',
+      entityId: user?.id,
+      after: { email: normalizedEmail }
+    });
     throw invalidCredentials();
   }
 
@@ -28,6 +34,14 @@ export async function login(email, password) {
     config.JWT_SECRET,
     { expiresIn: '12h' }
   );
+
+  await writeAudit(prisma, {
+    userId: user.id,
+    action: 'LOGIN',
+    entity: 'User',
+    entityId: user.id,
+    after: { email: user.email, role: user.role }
+  });
 
   return {
     token,

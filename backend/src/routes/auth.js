@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { asyncHandler } from '../lib/asyncHandler.js';
 import { authenticate } from '../middleware/auth.js';
-import { AppError } from '../lib/errors.js';
+import { validate } from '../middleware/validate.js';
 import { login } from '../services/authService.js';
 
 const router = Router();
@@ -10,21 +11,14 @@ const loginSchema = z.object({
   password: z.string().min(1)
 });
 
-router.post('/login', async (req, res, next) => {
-  const parsed = loginSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return next(
-      new AppError(400, 'VALIDATION_ERROR', 'Invalid login request', parsed.error.issues)
-    );
-  }
-
-  try {
-    const result = await login(parsed.data.email, parsed.data.password);
-    return res.json(result);
-  } catch (error) {
-    return next(error);
-  }
-});
+router.post(
+  '/login',
+  validate({ body: loginSchema }),
+  asyncHandler(async (req, res) => {
+    const result = await login(req.body.email, req.body.password);
+    res.json(result);
+  })
+);
 
 router.get('/me', authenticate, (req, res) => {
   res.json({ user: req.user });

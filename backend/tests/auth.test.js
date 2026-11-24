@@ -74,6 +74,20 @@ describe('authentication and authorization', () => {
       .set('Authorization', `Bearer ${loginResponse.body.token}`);
     expect(whoamiResponse.status).toBe(200);
     expect(whoamiResponse.body.user.email).toBe(testEmails.admin);
+
+    const auditResponse = await request(app)
+      .get(`/api/audit?entity=User&entityId=${testUsers.admin.id}&userId=${testUsers.admin.id}`)
+      .set('Authorization', `Bearer ${loginResponse.body.token}`);
+    expect(auditResponse.status).toBe(200);
+    expect(auditResponse.body.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: 'LOGIN',
+          entityId: testUsers.admin.id,
+          user: { name: testUsers.admin.name }
+        })
+      ])
+    );
   });
 
   it('returns the same credential error for an unknown email and a wrong password', async () => {
@@ -88,6 +102,35 @@ describe('authentication and authorization', () => {
     expect(unknownEmail.status).toBe(401);
     expect(wrongPassword.body.error.message).toBe('Invalid email or password');
     expect(unknownEmail.body.error.message).toBe('Invalid email or password');
+
+    const failureAudit = await prisma.auditLog.findFirst({
+      where: { action: 'LOGIN_FAILURE', entityId: testUsers.admin.id },
+      orderBy: { createdAt: 'desc' }
+    });
+    expect(failureAudit).toBeTruthy();
+  });
+
+  it('returns formatted validation errors and a consistent unknown-route response', async () => {
+    const validationResponse = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'not-an-email' });
+    expect(validationResponse.status).toBe(400);
+    expect(validationResponse.body.error).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'Invalid request'
+    });
+    expect(validationResponse.body.error.details).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: 'body.email', message: expect.any(String) }),
+        expect.objectContaining({ path: 'body.password', message: expect.any(String) })
+      ])
+    );
+
+    const unknownRoute = await request(app).get('/api/nothing');
+    expect(unknownRoute.status).toBe(404);
+    expect(unknownRoute.body).toEqual({
+      error: { code: 'NOT_FOUND', message: 'Route not found', details: null }
+    });
   });
 
   it('rejects a protected request without a token', async () => {
@@ -114,6 +157,14 @@ describe('authentication and authorization', () => {
 
     expect(salesmanResponse.status).toBe(403);
     expect(adminResponse.status).toBe(200);
+  });
+
+  it('forbids a salesman from reading the audit endpoint', async () => {
+    const response = await request(app)
+      .get('/api/audit')
+      .set('Authorization', `Bearer ${tokenFor(testUsers.salesman)}`);
+
+    expect(response.status).toBe(403);
   });
 
   it('rejects a token after its user is deactivated', async () => {

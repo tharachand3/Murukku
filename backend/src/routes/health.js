@@ -1,9 +1,10 @@
 import { Router } from 'express';
+import { asyncHandler } from '../lib/asyncHandler.js';
 import { prisma } from '../lib/prisma.js';
 
 const router = Router();
 
-router.get('/health', async (_req, res) => {
+router.get('/health', asyncHandler(async (_req, res) => {
   let db = true;
 
   try {
@@ -13,6 +14,6 @@ router.get('/health', async (_req, res) => {
   }
 
   res.json({ ok: true, db, time: new Date().toISOString() });
-});
+}));
 
 export default router;
