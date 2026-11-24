@@ -29,6 +29,10 @@ describe('variance helpers', () => {
       pct: '-6.00',
       flagged: true
     });
+    expect(describeVariance(200, 194, 300)).toMatchObject({
+      bp: -300,
+      flagged: false
+    });
     expect(() => varianceBp(0, 1)).toThrow(/must not be zero/);
   });
 });
