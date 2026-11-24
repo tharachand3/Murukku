@@ -2,14 +2,14 @@
 Last updated: 2026-11-24 by Copilot
 
 ## Next Step
-Step 04 - Prisma schema C: orders, invoices, dispatch, payments, credit notes, counters
+Step 05 - Money, GST, units and variance libraries + unit tests
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install` and `npm --prefix frontend install`.
 - Start PostgreSQL on host port 5433: `npm run db:up`; stop it with `npm run db:down`.
 - Start the API and UI in separate terminals: `npm run dev:backend` and `npm run dev:frontend`.
 - Test backend: `npm test`; build frontend: `npm --prefix frontend run build`.
-- Run Prisma commands from `backend/`: `npx prisma format`, `npx prisma validate`, `npx prisma migrate dev --name ledger_bom_production`, `npx prisma migrate status`.
+- Run Prisma commands from `backend/`: `npx prisma format`, `npx prisma validate`, `npx prisma migrate dev --name sales_loop`, `npx prisma migrate status`.
 - Copy `backend/.env.example` to `backend/.env` and set a private JWT secret before use.
 
 ## Step checklist (tick when DONE and VERIFIED)
@@ -17,7 +17,7 @@ Step 04 - Prisma schema C: orders, invoices, dispatch, payments, credit notes, c
 [x] 01 Monorepo scaffold, Docker Postgres, health check
 [x] 02 Prisma schema A: users, units, items, customers, suppliers, settings
 [x] 03 Prisma schema B: BOM, purchases, production runs, stock ledger, audit log
-[ ] 04 Prisma schema C: orders, invoices, dispatch, payments, credit notes, counters
+[x] 04 Prisma schema C: orders, invoices, dispatch, payments, credit notes, counters
 [ ] 05 Money, GST, units and variance libraries + unit tests
 [ ] 06 Seed script with the section 5 benchmark master data
 [ ] 07 Login, JWT and role middleware
@@ -83,6 +83,7 @@ Step 04 - Prisma schema C: orders, invoices, dispatch, payments, credit notes, c
 [ ] 60 Demo video script, interview rehearsal sheet, final audit
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
+- Step 04 (2026-11-24): Added order, invoice, dispatch, payment, credit-note, and document-counter models; documented invoice snapshots and credit-note cancellation. Added migration `20261124103152_sales_loop`; format, validate, migrate, and Prisma Client generation succeeded. Decision: no round-off line; GST is computed per line, then summed. No APIs or seeds.
 - Step 03 (2026-11-24): Added BOM, purchase, production, stock-ledger, and audit-log models plus the Mermaid model and six-line explanation. Migration `20261124102201_ledger_bom_production` is applied and Prisma Client generated. `npx prisma migrate status` reports up to date; `npm test` passes (1 test).
 - Step 01 (2026-11-24): Added root npm scripts/ignore rules, Postgres Compose service, Node/Express/Prisma API and health test, and React/Vite/Tailwind UI with API status. Added package manifests/lockfiles and backend env example/local env.
 - Verified: Prisma client generation; `npm test`; frontend production build; `docker compose config --quiet`; Compose database health. The initial host mapping collided with the Windows PostgreSQL service on port 5432; Compose now uses host port 5433.
@@ -95,16 +96,17 @@ Step 04 - Prisma schema C: orders, invoices, dispatch, payments, credit notes, c
 ## File map (path - purpose)
 - `AGENTS.md` - repository instructions.
 - `package.json`, `.gitignore`, `docker-compose.yml` - root scripts, ignore rules, and PostgreSQL service.
-- `backend/` - Node ES-module API, validated configuration, Prisma client/schema/migrations, health route, and test. Step 03 adds BOM, purchasing, production, stock ledger, and audit models.
+- `backend/` - Node ES-module API, validated configuration, Prisma client/schema/migrations, health route, and test. Steps 03-04 add BOM, purchasing, production, stock-ledger, audit, and sales-loop models.
 - `frontend/` - Vite/React UI, Tailwind v3/PostCSS, API client, and `/api` proxy.
-- `docs/` - project context, progress tracker, step prompts, and Mermaid data-model note, now including BOM/purchase/production/ledger/audit entities.
+- `docs/` - project context, progress tracker, step prompts, and Mermaid data-model note, now including BOM/purchase/production/ledger/audit/sales entities and invoice/cancellation notes.
 
 ## API endpoints (METHOD path - roles - purpose)
 - `GET /api/health` - public - API/database status and ISO timestamp; HTTP 200 if the database query fails.
-- No endpoints added in Step 03 (schema/documentation only).
+- No endpoints added in Steps 03-04 (schema/documentation only).
 
 ## Decisions (deviations from AI_CONTEXT.md and why)
 - DB host port is 5433 because the Windows PostgreSQL service occupies 5432
+- No round-off line; GST is computed per invoice line and then summed.
 
 ## Assumptions (copy into README at the end)
 - Project source and project guidance live at the Git repository root.

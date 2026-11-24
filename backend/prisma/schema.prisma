@@ -65,23 +65,50 @@ enum OverheadKind {
   OTHER
 }
 
+enum OrderStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+  INVOICED
+  DISPATCHED
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  POSTED
+  CANCELLED
+}
+
+enum PaymentMode {
+  CASH
+  UPI
+  BANK
+  CHEQUE
+}
+
 model User {
-  id                Int             @id @default(autoincrement())
-  name              String
-  email             String          @unique
+  id                 Int             @id @default(autoincrement())
+  name               String
+  email              String          @unique
   /// Store only a one-way password hash, never a plain-text password.
-  passwordHash      String
+  passwordHash       String
   /// Role used to authorize access to application functions.
-  role              Role
-  isActive          Boolean         @default(true)
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  assignedCustomers Customer[]      @relation("AssignedSalesman")
-  purchases         Purchase[]
-  startedRuns       ProductionRun[] @relation("RunStartedBy")
-  completedRuns     ProductionRun[] @relation("RunCompletedBy")
-  stockMovements    StockMovement[]
-  auditLogs         AuditLog[]
+  role               Role
+  isActive           Boolean         @default(true)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  assignedCustomers  Customer[]      @relation("AssignedSalesman")
+  purchases          Purchase[]
+  startedRuns        ProductionRun[] @relation("RunStartedBy")
+  completedRuns      ProductionRun[] @relation("RunCompletedBy")
+  stockMovements     StockMovement[]
+  auditLogs          AuditLog[]
+  salesOrders        Order[]         @relation("OrderSalesman")
+  approvedOrders     Order[]         @relation("OrderApprovedBy")
+  createdInvoices    Invoice[]
+  createdDispatches  Dispatch[]
+  createdPayments    Payment[]
+  createdCreditNotes CreditNote[]
 }
 
 model Unit {
@@ -127,6 +154,9 @@ model Item {
   finishedRuns      ProductionRun[]     @relation("RunFinishedItem")
   productionLines   ProductionRunLine[]
   stockMovements    StockMovement[]
+  orderLines        OrderLine[]
+  invoiceLines      InvoiceLine[]
+  dispatchLines     DispatchLine[]
 
   @@index([baseUnitId])
   @@index([displayUnitId])
@@ -150,6 +180,9 @@ model Customer {
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
   prices             CustomerPrice[]
+  orders             Order[]
+  invoices           Invoice[]
+  payments           Payment[]
 
   @@index([assignedSalesmanId])
 }
@@ -336,4 +369,142 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   @@index([entity, entityId])
+}
+
+model Order {
+  id           Int         @id @default(autoincrement())
+  orderNo      String      @unique
+  clientRef    String?     @unique
+  customerId   Int
+  customer     Customer    @relation(fields: [customerId], references: [id])
+  salesmanId   Int
+  salesman     User        @relation("OrderSalesman", fields: [salesmanId], references: [id])
+  status       OrderStatus @default(SUBMITTED)
+  notes        String?
+  rejectReason String?
+  createdAt    DateTime    @default(now())
+  approvedById Int?
+  approvedBy   User?       @relation("OrderApprovedBy", fields: [approvedById], references: [id])
+  approvedAt   DateTime?
+  updatedAt    DateTime    @updatedAt
+  lines        OrderLine[]
+  invoice      Invoice?
+}
+
+model OrderLine {
+  id                 Int   @id @default(autoincrement())
+  orderId            Int
+  order              Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  itemId             Int
+  item               Item  @relation(fields: [itemId], references: [id])
+  qty                Int
+  pricePaise         Int
+  approvedQty        Int?
+  approvedPricePaise Int?
+}
+
+model Invoice {
+  id                     Int           @id @default(autoincrement())
+  invoiceNo              String        @unique
+  financialYear          String
+  orderId                Int?          @unique
+  order                  Order?        @relation(fields: [orderId], references: [id])
+  customerId             Int
+  customer               Customer      @relation(fields: [customerId], references: [id])
+  issueDate              DateTime
+  placeOfSupplyStateCode String
+  isInterState           Boolean
+  taxableValuePaise      Int
+  cgstPaise              Int           @default(0)
+  sgstPaise              Int           @default(0)
+  igstPaise              Int           @default(0)
+  totalPaise             Int
+  status                 InvoiceStatus @default(POSTED)
+  cancelledAt            DateTime?
+  cancelReason           String?
+  createdById            Int
+  createdBy              User          @relation(fields: [createdById], references: [id])
+  createdAt              DateTime      @default(now())
+  lines                  InvoiceLine[]
+  dispatches             Dispatch[]
+  payments               Payment[]
+  creditNotes            CreditNote[]
+}
+
+model InvoiceLine {
+  id                Int     @id @default(autoincrement())
+  invoiceId         Int
+  invoice           Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  itemId            Int
+  item              Item    @relation(fields: [itemId], references: [id])
+  description       String
+  hsnCode           String?
+  qty               Int
+  ratePaise         Int
+  taxableValuePaise Int
+  gstRateBp         Int
+  cgstPaise         Int
+  sgstPaise         Int
+  igstPaise         Int
+  totalPaise        Int
+}
+
+model Dispatch {
+  id           Int            @id @default(autoincrement())
+  dispatchNo   String         @unique
+  invoiceId    Int
+  invoice      Invoice        @relation(fields: [invoiceId], references: [id])
+  dispatchDate DateTime
+  vehicleNo    String?
+  notes        String?
+  createdById  Int
+  createdBy    User           @relation(fields: [createdById], references: [id])
+  lines        DispatchLine[]
+}
+
+model DispatchLine {
+  id         Int      @id @default(autoincrement())
+  dispatchId Int
+  dispatch   Dispatch @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  itemId     Int
+  item       Item     @relation(fields: [itemId], references: [id])
+  qty        Int
+}
+
+model Payment {
+  id          Int         @id @default(autoincrement())
+  receiptNo   String      @unique
+  customerId  Int
+  customer    Customer    @relation(fields: [customerId], references: [id])
+  invoiceId   Int?
+  invoice     Invoice?    @relation(fields: [invoiceId], references: [id])
+  amountPaise Int
+  mode        PaymentMode
+  reference   String?
+  paymentDate DateTime
+  notes       String?
+  createdById Int
+  createdBy   User        @relation(fields: [createdById], references: [id])
+  createdAt   DateTime    @default(now())
+}
+
+model CreditNote {
+  id                Int      @id @default(autoincrement())
+  noteNo            String   @unique
+  invoiceId         Int
+  invoice           Invoice  @relation(fields: [invoiceId], references: [id])
+  reason            String
+  taxableValuePaise Int
+  cgstPaise         Int
+  sgstPaise         Int
+  igstPaise         Int
+  totalPaise        Int
+  createdById       Int
+  createdBy         User     @relation(fields: [createdById], references: [id])
+  createdAt         DateTime @default(now())
+}
+
+model DocumentCounter {
+  key        String @id
+  lastNumber Int    @default(0)
 }

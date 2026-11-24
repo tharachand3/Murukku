@@ -100,6 +100,25 @@ erDiagram
     Item ||--o{ StockMovement : "moves"
     User o|--o{ StockMovement : "records"
     User o|--o{ AuditLog : "performs"
+    Customer ||--o{ Order : "places"
+    User ||--o{ Order : "salesman"
+    User o|--o{ Order : "approves"
+    Order ||--o{ OrderLine : "contains"
+    Item ||--o{ OrderLine : "ordered"
+    Order o|--o| Invoice : "invoiced as"
+    Customer ||--o{ Invoice : "billed"
+    User ||--o{ Invoice : "creates"
+    Invoice ||--o{ InvoiceLine : "snapshots"
+    Item ||--o{ InvoiceLine : "invoiced"
+    Invoice ||--o{ Dispatch : "dispatched"
+    User ||--o{ Dispatch : "records"
+    Dispatch ||--o{ DispatchLine : "contains"
+    Item ||--o{ DispatchLine : "shipped"
+    Customer ||--o{ Payment : "pays"
+    Invoice o|--o{ Payment : "settles"
+    User ||--o{ Payment : "records"
+    Invoice ||--o{ CreditNote : "credited by"
+    User ||--o{ CreditNote : "creates"
 
     Bom {
         int id PK
@@ -216,6 +235,118 @@ erDiagram
         json after
         datetime createdAt
     }
+
+    Order {
+        int id PK
+        string orderNo UK
+        string clientRef UK
+        int customerId FK
+        int salesmanId FK
+        OrderStatus status
+        string notes
+        string rejectReason
+        datetime createdAt
+        int approvedById FK
+        datetime approvedAt
+        datetime updatedAt
+    }
+
+    OrderLine {
+        int id PK
+        int orderId FK
+        int itemId FK
+        int qty
+        int pricePaise
+        int approvedQty
+        int approvedPricePaise
+    }
+
+    Invoice {
+        int id PK
+        string invoiceNo UK
+        string financialYear
+        int orderId FK, UK
+        int customerId FK
+        datetime issueDate
+        string placeOfSupplyStateCode
+        boolean isInterState
+        int taxableValuePaise
+        int cgstPaise
+        int sgstPaise
+        int igstPaise
+        int totalPaise
+        InvoiceStatus status
+        datetime cancelledAt
+        string cancelReason
+        int createdById FK
+        datetime createdAt
+    }
+
+    InvoiceLine {
+        int id PK
+        int invoiceId FK
+        int itemId FK
+        string description
+        string hsnCode
+        int qty
+        int ratePaise
+        int taxableValuePaise
+        int gstRateBp
+        int cgstPaise
+        int sgstPaise
+        int igstPaise
+        int totalPaise
+    }
+
+    Dispatch {
+        int id PK
+        string dispatchNo UK
+        int invoiceId FK
+        datetime dispatchDate
+        string vehicleNo
+        string notes
+        int createdById FK
+    }
+
+    DispatchLine {
+        int id PK
+        int dispatchId FK
+        int itemId FK
+        int qty
+    }
+
+    Payment {
+        int id PK
+        string receiptNo UK
+        int customerId FK
+        int invoiceId FK
+        int amountPaise
+        PaymentMode mode
+        string reference
+        datetime paymentDate
+        string notes
+        int createdById FK
+        datetime createdAt
+    }
+
+    CreditNote {
+        int id PK
+        string noteNo UK
+        int invoiceId FK
+        string reason
+        int taxableValuePaise
+        int cgstPaise
+        int sgstPaise
+        int igstPaise
+        int totalPaise
+        int createdById FK
+        datetime createdAt
+    }
+
+    DocumentCounter {
+        string key PK
+        int lastNumber
+    }
 ```
 
 Money is stored as integer paise to avoid floating-point rounding in financial values.
@@ -230,3 +361,8 @@ The movement source identifies the originating business document for traceabilit
 A bill of materials records the ingredients and base-unit quantities for one batch.
 Purchases and production runs retain their line-level quantities, rates, and costs.
 Audit logs capture who changed an entity and the recorded before-and-after values.
+
+## Sales model notes
+
+- Invoice lines snapshot their rate, HSN code, and GST rate so later master-data changes do not alter posted invoices.
+- Cancelling an invoice creates a credit note; invoices are never deleted.
