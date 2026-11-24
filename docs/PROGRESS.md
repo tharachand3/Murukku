@@ -2,13 +2,15 @@
 Last updated: 2026-11-24 by Copilot
 
 ## Next Step
-Step 09 - Ledger service (addMovement, balances, running ledger) + tests
+Step 10 - Stock summary and ledger APIs + benchmark-check script
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install` and `npm --prefix frontend install`.
 - Start PostgreSQL on host port 5433: `npm run db:up`; stop it with `npm run db:down`.
+- Create the separate test database once if it does not exist: `docker compose exec -T db createdb -U oda oda_test`.
+- From `backend/`, apply migrations to `oda_test` before the first test run: set `$env:DATABASE_URL = 'postgresql://oda:oda@localhost:5433/oda_test?schema=public'`, run `npx prisma migrate deploy`, then `Remove-Item Env:DATABASE_URL`. `DATABASE_URL_TEST` is configured in `.env`; Vitest refuses any test URL other than `oda_test`.
 - Start the API and UI in separate terminals: `npm run dev:backend` and `npm run dev:frontend`.
-- Test backend, including pure library unit tests: `npm test`; build frontend: `npm --prefix frontend run build`.
+- From `backend/`, test backend and pure library units with `npm test`; Vitest resets only the isolated test database. Build frontend: `npm --prefix frontend run build`.
 - From `backend/`, load benchmark data with `npm run seed` (or `npx prisma db seed`); rerun safely with no duplicate records.
 - From `backend/`, `npm run seed:reset` clears application tables and reseeds (destructive; refuses `NODE_ENV=production`); `npm run balances` prints ledger-derived stock in display units.
 - Demo logins (password for every account: `Demo@123`):
@@ -24,7 +26,8 @@ Step 09 - Ledger service (addMovement, balances, running ledger) + tests
 - Login with `POST /api/auth/login`, then send its token as `Authorization: Bearer <token>` to `GET /api/auth/me`.
 - `GET /api/audit` requires ADMIN, ACCOUNTANT, or OWNER; supports entity/user/date filters and pagination (`limit` max 100).
 - Check library source for float parsing/formatting: from `backend/`, run `rg -n "parseFloat|toFixed" src/lib` (expect no matches).
-- Run Prisma commands from `backend/`: `npx prisma format`, `npx prisma validate`, `npx prisma migrate dev --name sales_loop`, `npx prisma migrate status`.
+- Run Prisma commands from `backend/`: `npx prisma format`, `npx prisma validate`, `npx prisma migrate dev`, `npx prisma migrate status`.
+- To check the append-only trigger, connect with `docker compose exec -it db psql -U oda -d oda` and run `UPDATE "StockMovement" SET "qtyChange" = 1;` (it must raise an error).
 - Copy `backend/.env.example` to `backend/.env` and set a private JWT secret before use.
 
 ## Step checklist (tick when DONE and VERIFIED)
@@ -38,7 +41,7 @@ Step 09 - Ledger service (addMovement, balances, running ledger) + tests
 [x] 07 Login, JWT and role middleware
 [x] 08 Validation, error handling and audit-log helper
 ### Phase 2 - Stock ledger and purchases
-[ ] 09 Ledger service (addMovement, balances, running ledger) + tests
+[x] 09 Ledger service (addMovement, balances, running ledger) + tests
 [ ] 10 Stock summary and ledger APIs + benchmark-check script
 [ ] 11 Document numbering service (financial-year counters)
 [ ] 12 Purchase API with supplier and per-unit rates
@@ -98,6 +101,7 @@ Step 09 - Ledger service (addMovement, balances, running ledger) + tests
 [ ] 60 Demo video script, interview rehearsal sheet, final audit
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
+- Step 09 (2026-11-24): Added transaction-safe ledger writes/balances/running ledger, item-row locking for outflows, and the append-only UPDATE/DELETE trigger. Routed seed openings through the service; added isolated `oda_test` reset/seed helpers and concurrency/trigger tests. `npm test` passes (37); repeated seed kept six openings.
 - Step 08 (2026-11-24): Added Zod request validation, shared AppError helpers/error handler, async route wrapper, and transaction-compatible JSON-safe audit helper; audited successful/failed logins and added the capability-protected audit listing. Refactored auth/health routes. `npm test` passes (29); live 404, demo login, and audit lookup verified.
 - Step 07 (2026-11-24): Added JWT login, active-user authentication, role/capability middleware and test-only auth endpoints; added `jsonwebtoken`. Added Supertest coverage for login, invalid credentials, missing/deactivated/deleted users, role and capability checks. `npm test` passes (23); live demo login and `/api/auth/me` returned ADMIN successfully.
 - Step 06 (2026-11-24): Added `backend/prisma/seed.js`, `backend/scripts/reset-db.js`, and `backend/scripts/print-balances.js`; wired bcryptjs and npm/Prisma scripts. Verified balances, repeat seeding, password/assignment/BOM/opening values, production refusal, and expected record counts; `npm test` passes (16). Prisma 6 warns the requested seed config is deprecated for Prisma 7.
@@ -120,9 +124,12 @@ Step 09 - Ledger service (addMovement, balances, running ledger) + tests
 - `backend/scripts/` - production-guarded database reset/reseed and display-unit balance reporting.
 - `backend/src/config/permissions.js` - centralized role list and capability matrix.
 - `backend/src/services/authService.js`, `backend/src/middleware/auth.js`, `backend/src/routes/auth.js` - credential login, JWT issuance/verification, authorization checks, and auth endpoints.
+- `backend/src/services/ledgerService.js` - the only application service that creates stock movements; provides locked outflows, balances, and running ledger rows.
 - `backend/src/lib/errors.js`, `asyncHandler.js`, `audit.js`; `backend/src/middleware/validate.js`, `errorHandler.js` - shared errors, async route handling, validation, and transaction-aware audit writes.
 - `backend/src/routes/audit.js` - capability-protected, filtered and paginated audit log listing.
-- `backend/tests/` - auth, audit, middleware/error, and pure library Vitest coverage.
+- `backend/tests/helpers/db.js`, `tests/setup.js`, `vitest.config.js` - guarded `oda_test` database reset/seeding and Vitest isolation.
+- `backend/tests/` - ledger, auth, audit, middleware/error, and pure library Vitest coverage.
+- `backend/prisma/migrations/20261124115051_ledger_append_only/` - database trigger preventing stock-movement updates and deletes.
 - `frontend/` - Vite/React UI, Tailwind v3/PostCSS, API client, and `/api` proxy.
 - `docs/` - project context, progress tracker, step prompts, and Mermaid data-model note, now including BOM/purchase/production/ledger/audit/sales entities and invoice/cancellation notes.
 
@@ -135,12 +142,14 @@ Step 09 - Ledger service (addMovement, balances, running ledger) + tests
 - No endpoints added in Steps 03-04 (schema/documentation only).
 - Step 05 adds pure functions only; no endpoints.
 - Step 06 adds seed and maintenance scripts only; no endpoints.
+- Step 09 adds the ledger service only; no endpoints.
 
 ## Decisions (deviations from AI_CONTEXT.md and why)
 - DB host port is 5433 because the Windows PostgreSQL service occupies 5432
 - No round-off line; GST is computed per invoice line and then summed.
 - Authentication reloads the account and role for every request, so deactivation, deletion, and role changes take effect without waiting for token expiry.
 - Failed-login audits store the attempted email but never the password; unknown-email attempts have a null userId. Audit list `from`/`to` bounds are inclusive and `limit` is capped at 100.
+- Opening stock movements use their item id as `sourceId` because the model has no separate opening-document record.
 
 ## Assumptions (copy into README at the end)
 - Project source and project guidance live at the Git repository root.
@@ -153,6 +162,7 @@ Step 09 - Ledger service (addMovement, balances, running ledger) + tests
 - No refresh-token or logout endpoint yet; access tokens expire after 12 hours, and deactivated or deleted accounts are rejected on each request.
 - No Step 05-specific known issues.
 - Prisma 6 warns that the requested `package.json#prisma` seed configuration is deprecated in Prisma 7.
+- The append-only trigger blocks row UPDATE/DELETE; explicit reset helpers use TRUNCATE only on a dedicated/reset database. Tests require the migrated `oda_test` database.
 
 ## Benchmark status (stage: PASS/FAIL/SKIPPED)
 (not started)

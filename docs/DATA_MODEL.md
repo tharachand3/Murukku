@@ -358,6 +358,7 @@ This keeps inventory arithmetic and financial totals deterministic and auditable
 Stock = sum of ledger rows; production run writes ISSUE rows (raw down) and OUTPUT row (finished up).
 Each stock movement records a signed quantity in the item's integer base unit.
 The movement source identifies the originating business document for traceability.
+Stock movements are append-only: a PostgreSQL trigger rejects UPDATE and DELETE; corrections use a new ADJUSTMENT movement.
 A bill of materials records the ingredients and base-unit quantities for one batch.
 Purchases and production runs retain their line-level quantities, rates, and costs.
 Audit logs capture who changed an entity and the recorded before-and-after values.

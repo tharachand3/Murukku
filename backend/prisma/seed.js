@@ -3,8 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import Decimal from 'decimal.js';
-import { mulRateQty } from '../src/lib/money.js';
+import { addMovement } from '../src/services/ledgerService.js';
 
 const password = 'Demo@123';
 const seedUsers = [
@@ -267,17 +266,15 @@ async function seedData(tx, passwordHash, movementDate) {
       continue;
     }
 
-    await tx.stockMovement.create({
-      data: {
-        itemId: item.id,
-        movementType: 'OPENING',
-        qtyChange: opening.qty,
-        ratePaisePerBase: new Decimal(opening.rate),
-        valuePaise: mulRateQty(opening.rate, opening.qty),
-        sourceType: 'OPENING',
-        sourceRef: 'OPENING',
-        movementDate
-      }
+    await addMovement(tx, {
+      itemId: item.id,
+      movementType: 'OPENING',
+      qtyChange: opening.qty,
+      ratePaisePerBase: opening.rate,
+      sourceType: 'OPENING',
+      sourceId: item.id,
+      sourceRef: 'OPENING',
+      movementDate
     });
   }
 }
