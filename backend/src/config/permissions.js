@@ -23,5 +23,6 @@ export const CAPABILITY_MATRIX = Object.freeze({
   'masters:write': Object.freeze(['ADMIN']),
   'reports:read': Object.freeze(['ADMIN', 'ACCOUNTANT', 'OWNER']),
   'audit:read': Object.freeze(['ADMIN', 'ACCOUNTANT', 'OWNER']),
-  'dashboard:read': Object.freeze(['OWNER', 'ADMIN'])
+  'dashboard:read': Object.freeze(['OWNER', 'ADMIN']),
+  'purchases:read': Object.freeze(['PRODUCTION', 'ADMIN', 'ACCOUNTANT', 'OWNER'])
 });

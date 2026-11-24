@@ -11,6 +11,7 @@ import authRouter from './routes/auth.js';
 import auditRouter from './routes/audit.js';
 import healthRouter from './routes/health.js';
 import stockRouter from './routes/stock.js';
+import purchasesRouter from './routes/purchases.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -28,6 +29,7 @@ app.use('/api', healthRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/audit', auditRouter);
 app.use('/api/stock', stockRouter);
+app.use('/api/purchases', purchasesRouter);
 
 if (process.env.NODE_ENV === 'test') {
   app.get('/api/_whoami', authenticate, (req, res) => {

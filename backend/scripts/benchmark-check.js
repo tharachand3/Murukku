@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
+import { getAverageRate } from '../src/services/costingService.js';
 import { getBalances } from '../src/services/ledgerService.js';
 
 const EXPECTED = {
@@ -16,7 +17,17 @@ const EXPECTED = {
   },
   'after-purchase': {
     stock: { FLOUR: '160 kg' },
-    documents: { purchases: 1 }
+    documents: { purchases: 1 },
+    purchaseLine: {
+      itemCode: 'FLOUR',
+      qtyBase: 60000,
+      ratePaisePerBase: '4.5',
+      amountPaise: 270000
+    },
+    averageRate: {
+      itemCode: 'FLOUR',
+      paisePerBase: '4.3125'
+    }
   },
   'after-run': {
     stock: {
@@ -71,6 +82,45 @@ const checks = Object.entries(EXPECTED).flatMap(([stage, expectations]) => [
       return balance?.balanceDisplay ?? null;
     }
   })),
+  ...(expectations.purchaseLine
+    ? [{
+        name: 'FLOUR purchase: 60 kg at Rs 45/kg',
+        kind: 'document',
+        stage,
+        expected: true,
+        actualFn: async (db) => {
+          const lines = await db.purchaseLine.findMany({
+            where: {
+              item: { code: expectations.purchaseLine.itemCode },
+              qty: expectations.purchaseLine.qtyBase,
+              amountPaise: expectations.purchaseLine.amountPaise
+            },
+            select: { ratePaisePerBase: true }
+          });
+          return lines.some(({ ratePaisePerBase }) =>
+            ratePaisePerBase.toString() === expectations.purchaseLine.ratePaisePerBase
+          );
+        }
+      }]
+    : []),
+  ...(expectations.averageRate
+    ? [{
+        name: 'FLOUR weighted average rate',
+        kind: 'document',
+        stage,
+        expected: expectations.averageRate.paisePerBase,
+        actualFn: async (db) => {
+          const item = await db.item.findUnique({
+            where: { code: expectations.averageRate.itemCode },
+            select: { id: true }
+          });
+          if (!item) {
+            return null;
+          }
+          return (await getAverageRate(db, item.id)).toString();
+        }
+      }]
+    : []),
   ...Object.entries(expectations.documents).map(([document, expected]) => ({
     name: `${document} count`,
     kind: 'document',
