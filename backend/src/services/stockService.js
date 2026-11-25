@@ -1,6 +1,10 @@
 import { getBalances } from './ledgerService.js';
+import { getReservedPackets } from './availabilityService.js';
 
-export async function getFinishedAvailability(db) {
+export async function getFinishedAvailability(
+  db,
+  { includeReservationDetails = false } = {}
+) {
   const items = await db.item.findMany({
     where: { type: 'FINISHED', isActive: true },
     select: { id: true, name: true }
@@ -66,9 +70,25 @@ export async function getFinishedAvailability(db) {
     }
   }
 
-  return items.map(({ id, name }) => ({
-    itemId: id,
-    name,
-    availablePackets: (balanceById.get(id) ?? 0) - (reservedByItem.get(id) ?? 0)
-  }));
+  const reservationsByItem = includeReservationDetails
+    ? new Map(await Promise.all(items.map(async ({ id }) =>
+        [id, await getReservedPackets(db, id)]
+      )))
+    : null;
+
+  return items.map(({ id, name }) => {
+    const onHand = balanceById.get(id) ?? 0;
+    const reservedPackets = reservationsByItem?.get(id) ?? 0;
+    return {
+      itemId: id,
+      name,
+      availablePackets: onHand - (reservedByItem.get(id) ?? 0),
+      ...(includeReservationDetails
+        ? {
+            reservedPackets,
+            freePackets: Math.max(0, onHand - reservedPackets)
+          }
+        : {})
+    };
+  });
 }

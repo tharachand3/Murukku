@@ -12,6 +12,7 @@ import {
 import { requireAnyCapability } from '../middleware/auth.js';
 import { isValidIstDate } from '../lib/istDate.js';
 import { prisma } from '../lib/prisma.js';
+import { checkOrderAvailability } from '../services/availabilityService.js';
 
 const router = Router();
 const dateSchema = z.string().refine(
@@ -86,6 +87,16 @@ router.get(
   validate({ query: customerSalesQuerySchema }),
   asyncHandler(async (req, res) => {
     res.json(await listCustomerSales(prisma, req.user, req.query));
+  })
+);
+
+router.get(
+  '/:id/availability',
+  authenticate,
+  requireCapability('orders:availability'),
+  validate({ params: idParamsSchema }),
+  asyncHandler(async (req, res) => {
+    res.json(await checkOrderAvailability(prisma, req.params.id));
   })
 );
 

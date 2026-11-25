@@ -139,8 +139,10 @@ router.get(
   '/finished-availability',
   authenticate,
   finishedStockRoles,
-  asyncHandler(async (_req, res) => {
-    res.json(await getFinishedAvailability(prisma));
+  asyncHandler(async (req, res) => {
+    res.json(await getFinishedAvailability(prisma, {
+      includeReservationDetails: req.user.role !== 'SALESMAN'
+    }));
   })
 );
 
