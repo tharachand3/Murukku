@@ -74,3 +74,18 @@ export function requireCapability(name) {
     return next();
   };
 }
+
+export function requireAnyCapability(...names) {
+  return (req, _res, next) => {
+    if (!req.user) {
+      return next(unauthorizedError());
+    }
+    const allowed = names.some((name) =>
+      CAPABILITY_MATRIX[name]?.includes(req.user.role)
+    );
+    if (!allowed) {
+      return next(forbiddenError());
+    }
+    return next();
+  };
+}
