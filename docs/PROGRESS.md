@@ -2,7 +2,7 @@
 Last updated: 2026-11-25 by Copilot
 
 ## Next Step
-Step 19 - Calculate production variance and tolerance flags
+Step 20 - Production run list, detail and cancellation
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install`; start/stop PostgreSQL on port 5433 with `npm run db:up` / `npm run db:down`.
@@ -19,6 +19,7 @@ Step 19 - Calculate production variance and tolerance flags
 - BOM planning: `GET /api/boms/:id/plan` with exactly one mode, `?batches=2.5`, `?targetOutput=300`, or `?itemId=1&qty=20&unit=kg`; max 100 batches.
 - Start a run with `POST /api/production/runs` (PRODUCTION/ADMIN), providing exactly one of `bomId` or `finishedItemId`; the latter selects the active BOM. Optional `issues` use decimal-string quantities and units.
 - Complete an ISSUED run with `POST /api/production/runs/:id/complete` (PRODUCTION/ADMIN), supplying actual good/rejected output and optional consumed/scrapped BOM quantities.
+- Read completed run variance with `GET /api/production/runs/:id/variance`; list completed runs and alert counts with `GET /api/production/variance?from=&to=&flaggedOnly=true&page=&limit=` (PRODUCTION/ADMIN/ACCOUNTANT/OWNER).
 - `GET /api/audit` requires ADMIN/ACCOUNTANT/OWNER; supports entity/user/date filters and pagination (limit max 100).
 - Check `src/lib` for `parseFloat`/`toFixed` with `rg -n "parseFloat|toFixed" src/lib` (expect no matches).
 - Append-only trigger check: `docker compose exec -it db psql -U oda -d oda`, then `UPDATE "StockMovement" SET "qtyChange" = 1;` (must fail).
@@ -31,7 +32,7 @@ Step 19 - Calculate production variance and tolerance flags
 09-14 [x]: ledger service; stock APIs/benchmark checker; FY numbering; purchases; adjustments; master-data APIs.
 ### Phase 3 - BOM and production (highest weight)
 15-16 [x]: BOM CRUD/versioning/cloning; planned-consumption calculator.
-17-18 [x] production start/issues and completion/output/scrap; 19 [ ] variance/tolerance; 20 [ ] run list/detail/cancel; 21 [ ] benchmark steps 1-3.
+17-19 [x] production start/issues, completion/output/scrap, and variance/tolerance; 20 [ ] run list/detail/cancel; 21 [ ] benchmark steps 1-3.
 ### Phase 4 - Sales loop
 22-33 [ ] price resolution; orders; order roles/status; availability; approval; GST; invoicing; dispatch; payments; credit notes; shortage flow; benchmark steps 4-7.
 ### Phase 5 - Costing
@@ -44,6 +45,7 @@ Step 19 - Calculate production variance and tolerance flags
 57-60 [ ] full benchmark/fixes; deployment; README/design note; demo/interview/final audit.
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
+- Step 19 (2026-11-25): Added snapshot-tolerance yield/material variance calculations, persisted flags during completion, run detail and paginated/filterable variance APIs, and final benchmark variance assertions with carton/pouch informational output. Files: variance service, production service/route/tests, benchmark checker, and this log. Targeted variance tests pass (14); full `npm test` and API benchmark verification pass. Decision: flags use the run's saved tolerance and strict `abs(bp) > tolerance`; extra carton/pouch flags must be explained in README.
 - Step 18 (2026-11-25): Added locked transactional completion, packaging consumption/scrap issues, finished output, final material-cost snapshot, audit, and `POST /api/production/runs/:id/complete`. Added full benchmark completion and rollback/validation tests, plus a completed-output benchmark assertion. Files: production service/route, production tests, benchmark checker, and this log. `npm test` passes (94); reset + purchase + start + complete + `after-run` benchmark passes (12 checks). Variance remains unset for Step 19.
 - Step 17 (2026-11-25): Added atomic run creation, plan snapshots, raw-material ledger issues, average-rate material costs, audit, and `POST /api/production/runs`; added five API cases and the after-issue benchmark. Files: production service/route, app mount, production tests, benchmark checker, and this log. `npm test` passes (89); reset + purchase + run + after-issue benchmark passes (10 checks). Decision: `issuedQty` is total stock-out (consumed plus scrap); defer packaging to completion by default.
 - Step 16 (2026-11-24): Added pure Decimal-based batch, target-output, and issued-material BOM planning with half-up integer base quantities, plus a role-gated plan endpoint for all three exclusive query modes. Pure and API tests pass; full `npm test` passes (84). Assumption: plan responses serialize batchCount as a decimal string to preserve precision.
@@ -71,7 +73,7 @@ Step 19 - Calculate production variance and tolerance flags
 - `backend/src/config/`, `middleware/`: role/capability matrix, auth, validation, and centralized error handling.
 - `backend/src/lib/`: Decimal money/GST/units/variance/BOM math, FY, states, errors, audit, and async helpers.
 - `backend/src/routes/`: health, auth, audit, stock/adjustments, purchases, BOMs, production, items, customers/prices, suppliers, settings, and users.
-- `backend/src/services/`: auth, append-only ledger, stock availability, adjustment, purchase/costing, BOM, production-run start, master data, settings, and user logic.
+- `backend/src/services/`: auth, append-only ledger, stock availability, adjustment, purchase/costing, BOM, production-run start/completion and variance, master data, settings, and user logic.
 - `backend/tests/`: API/unit suites; `helpers/db.js` and setup guard test operations to `oda_test`.
 - `frontend/`: Vite/React UI, Tailwind, API client, and `/api` proxy.
 
@@ -85,7 +87,7 @@ Step 19 - Calculate production variance and tolerance flags
 - `/api/suppliers`: `GET /?active=`, `GET /:id` authenticated; `POST /`, `PATCH /:id` ADMIN. `/api/settings`: `GET /` authenticated; `PUT /:key` ADMIN.
 - `/api/users`: `GET /`, `POST /`, `PATCH /:id`, `POST /:id/reset-password` ADMIN; responses omit password hashes.
 - `/api/boms`: `GET /?finishedItemId=&active=`, `GET /:id`, `GET /:id/plan` ADMIN/PRODUCTION/ACCOUNTANT/OWNER; `POST /`, `PUT /:id`, `POST /:id/clone` ADMIN/PRODUCTION. Plan accepts exactly one of `?batches=`, `?targetOutput=`, or `?itemId=&qty=&unit=`.
-- `/api/production`: `POST /runs` and `POST /runs/:id/complete` PRODUCTION/ADMIN; start snapshots the plan and issues requested (or default raw) materials; completion records consumption, scrap, finished output, material-cost snapshot, and audit in one transaction. Variance calculation is deferred to Step 19.
+- `/api/production`: `POST /runs` and `POST /runs/:id/complete` PRODUCTION/ADMIN; `GET /runs/:id/variance` and `GET /variance?from=&to=&flaggedOnly=&page=&limit=` PRODUCTION/ADMIN/ACCOUNTANT/OWNER. Completion snapshots run variance; detail returns yield/material comparisons and alerts; list returns completed runs with alert counts.
 - Test-only: `GET /api/_whoami`, `/api/_admin-only`, `/api/_approve-only`.
 - Stock availability subtracts outstanding approved/invoiced reservations; purchase cost averages use Decimal rates; adjustment quantities are positive magnitudes with IN/OUT direction, and adjustment history uses `createdAt`.
 
@@ -99,6 +101,7 @@ Step 19 - Calculate production variance and tolerance flags
 - BOM cloning supports pack-size variants in one call: retain raw-material lines and replace packaging items for a new finished SKU; the source BOM remains unchanged.
 - Planned consumption rounds fractional batch counts to four decimals and each resulting output/material quantity to the nearest integer using half-up rounding.
 - A run line's `issuedQty` records total quantity leaving stock for the run (consumed plus scrap); step 17 starts raw-material issues, while packaging can be issued at completion.
+- Variance flags compare total issued quantities (consumed plus scrap) with BOM plan using the run's saved tolerance; `abs(bp)` must be strictly greater than tolerance. Cartons -10.00% are flagged and pouches -3.00% are not flagged at 300 bp; these are extra flags to explain in README.
 
 ## Assumptions (copy into README at the end)
 - Project source and project guidance live at the Git repository root.
@@ -122,7 +125,7 @@ Step 19 - Calculate production variance and tolerance flags
 - Adjustments have no editable effective date; history filtering uses the recorded `createdAt`, and corrections always append rather than update or delete.
 - Master data has no hard-delete endpoints; item deactivation is rejected while ledger balance is nonzero.
 - BOMs have no delete endpoint; production-run history stays attached to its original recipe version.
-- Production runs can be started and completed; variance calculation and run history/cancellation remain Steps 19-20.
+- Production runs can be started, completed, and variance-checked; run history/cancellation remain Step 20.
 - Planned batch counts are capped at 100; fractional ingredient results are rounded to integer base units as required for stock quantities.
 - Explicit `bomId` can start a run from that BOM version; `finishedItemId` resolves the active BOM.
 - Test DB reset timeout raised for slow Windows/Docker.

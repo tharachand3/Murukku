@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../lib/asyncHandler.js';
+import { prisma } from '../lib/prisma.js';
 import { authenticate, requireCapability } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { completeRun, startRun } from '../services/productionService.js';
+import { getRunVariance, listRunVariances } from '../services/varianceService.js';
 
 const router = Router();
 const integerId = z.number().int().positive().max(2147483647);
@@ -46,6 +48,44 @@ const completeRunSchema = z.object({
   notes: z.string().nullable().optional(),
   consumption: z.array(consumptionSchema).optional()
 });
+const varianceListQuerySchema = z.object({
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+  flaggedOnly: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(50)
+}).superRefine((query, context) => {
+  if (query.from && query.to && query.from > query.to) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: '`from` must be earlier than or equal to `to`',
+      path: ['from']
+    });
+  }
+});
+
+router.get(
+  '/variance',
+  authenticate,
+  requireCapability('production:read'),
+  validate({ query: varianceListQuerySchema }),
+  asyncHandler(async (req, res) => {
+    res.json(await listRunVariances(prisma, {
+      ...req.query,
+      flaggedOnly: req.query.flaggedOnly ?? false
+    }));
+  })
+);
+
+router.get(
+  '/runs/:id/variance',
+  authenticate,
+  requireCapability('production:read'),
+  validate({ params: idParamsSchema }),
+  asyncHandler(async (req, res) => {
+    res.json(await getRunVariance(prisma, req.params.id));
+  })
+);
 
 router.post(
   '/runs',

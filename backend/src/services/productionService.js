@@ -8,6 +8,7 @@ import { prisma } from '../lib/prisma.js';
 import { addMovement } from './ledgerService.js';
 import { nextNumber } from './numberingService.js';
 import { getAverageRate } from './costingService.js';
+import { applyRunVariance } from './varianceService.js';
 
 const INTEGER_MAX = 2147483647;
 
@@ -462,7 +463,7 @@ export async function completeRun(userId, runId, input) {
       assertPaiseAmount(next, 'Production material cost');
       return next;
     }, 0);
-    const after = await tx.productionRun.update({
+    await tx.productionRun.update({
       where: { id: before.id },
       data: {
         status: 'COMPLETED',
@@ -476,6 +477,10 @@ export async function completeRun(userId, runId, input) {
           : {}),
         ...(input.notes !== undefined ? { notes: input.notes } : {})
       },
+    });
+    await applyRunVariance(tx, before.id);
+    const after = await tx.productionRun.findUnique({
+      where: { id: before.id },
       include: runInclude
     });
     await writeAudit(tx, {

@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { getAverageRate } from '../src/services/costingService.js';
 import { getBalances } from '../src/services/ledgerService.js';
+import { computeRunVariance } from '../src/services/varianceService.js';
 
 const EXPECTED = {
   opening: {
@@ -61,7 +62,17 @@ const EXPECTED = {
   },
   final: {
     stock: { MURUKKU200: '88 packet' },
-    documents: { payments: 1 }
+    documents: { payments: 1 },
+    varianceChecks: [
+      { name: 'yield variance -6.00% flagged', target: 'yield', expected: { bp: -600, pct: '-6.00', flagged: true } },
+      { name: 'oil variance +5.00% flagged', itemCode: 'OIL', expected: { bp: 500, pct: '5.00', flagged: true } },
+      { name: 'flour variance 0.00% not flagged', itemCode: 'FLOUR', expected: { bp: 0, pct: '0.00', flagged: false } },
+      { name: 'spice variance 0.00% not flagged', itemCode: 'SPICE', expected: { bp: 0, pct: '0.00', flagged: false } }
+    ],
+    varianceInfo: [
+      { name: 'carton variance (informational)', itemCode: 'CARTON' },
+      { name: 'pouch variance (informational)', itemCode: 'POUCH200' }
+    ]
   }
 };
 
@@ -149,6 +160,84 @@ const checks = Object.entries(EXPECTED).flatMap(([stage, expectations]) => [
         }))
       }]
     : []),
+  ...(expectations.varianceChecks ?? []).map((expectation) => ({
+    name: expectation.name,
+    kind: 'document',
+    stage,
+    expected: JSON.stringify(expectation.expected),
+    actualFn: async (db) => {
+      const run = await db.productionRun.findFirst({
+        where: { status: 'COMPLETED', actualGoodQty: 188 },
+        orderBy: [{ completedAt: 'desc' }, { id: 'desc' }],
+        include: {
+          lines: {
+            include: {
+              item: {
+                select: {
+                  code: true,
+                  name: true,
+                  displayUnit: { select: { code: true } }
+                }
+              }
+            }
+          }
+        }
+      });
+      if (!run) {
+        return null;
+      }
+      const variance = computeRunVariance(run, run.lines);
+      const result = expectation.target === 'yield'
+        ? variance.yield
+        : variance.lines.find((line) =>
+            run.lines.find((runLine) => runLine.itemId === line.itemId)?.item.code === expectation.itemCode
+          );
+      if (!result) {
+        return null;
+      }
+      return JSON.stringify({
+        bp: result.bp,
+        pct: result.pct,
+        flagged: result.flagged
+      });
+    }
+  })),
+  ...(expectations.varianceInfo ?? []).map((expectation) => ({
+    name: expectation.name,
+    kind: 'info',
+    stage,
+    expected: 'informational; not asserted',
+    actualFn: async (db) => {
+      const run = await db.productionRun.findFirst({
+        where: { status: 'COMPLETED', actualGoodQty: 188 },
+        orderBy: [{ completedAt: 'desc' }, { id: 'desc' }],
+        include: {
+          lines: {
+            include: {
+              item: {
+                select: {
+                  code: true,
+                  name: true,
+                  displayUnit: { select: { code: true } }
+                }
+              }
+            }
+          }
+        }
+      });
+      if (!run) {
+        return 'benchmark run not found';
+      }
+      const variance = computeRunVariance(run, run.lines);
+      const line = variance.lines.find((entry) =>
+        run.lines.find((runLine) => runLine.itemId === entry.itemId)?.item.code === expectation.itemCode
+      );
+      if (!line) {
+        return `${expectation.itemCode} variance not found`;
+      }
+      return `${line.pct}% ${line.flagged ? 'flagged' : 'not flagged'}`;
+    }
+  })),
   ...Object.entries(expectations.documents).map(([document, expected]) => ({
     name: `${document} count`,
     kind: 'document',
@@ -202,7 +291,9 @@ async function main() {
 
       try {
         const actual = await check.actualFn(prisma);
-        const status = actual === check.expected ? 'PASS' : 'FAIL';
+        const status = check.kind === 'info'
+          ? 'INFO'
+          : actual === check.expected ? 'PASS' : 'FAIL';
         if (status === 'PASS') {
           passed += 1;
         } else {
