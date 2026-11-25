@@ -2,7 +2,7 @@
 Last updated: 2026-11-25 by Copilot
 
 ## Next Step
-Step 26 - Order approval and rejection
+Step 27 - GST and invoice creation
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install`; start/stop PostgreSQL on port 5433 with `npm run db:up` / `npm run db:down`.
@@ -13,6 +13,7 @@ Step 26 - Order approval and rejection
 - Create an order with SALESMAN `POST /api/orders` using `{ clientRef?, customerId, notes?, lines: [{ itemId, qty }] }`; prices are resolved server-side, and retrying a supplied `clientRef` returns the existing order.
 - Read orders with `GET /api/orders` (salesmen see only their own; ADMIN/OWNER/ACCOUNTANT see all) and `GET /api/orders/:id`; `GET /api/orders/my/customer-sales` is SALESMAN-only. `from`/`to` use inclusive IST calendar dates.
 - Check stock before approval with `GET /api/orders/:id/availability` (ADMIN/OWNER). Approved/invoiced undispatched quantities are reserved; partial dispatch reduces both on-hand and reservation.
+- Admin order changes require `orders:approve`: `PATCH /api/orders/:id/lines`, `POST /api/orders/:id/approve`, `POST /api/orders/:id/reject`, and `POST /api/orders/:id/cancel`. Approval freezes effective quantities/prices and requires enough unreserved stock; partial approval is allowed, and manual cancellation is limited to SUBMITTED/APPROVED.
 - Stock readers can use `GET /api/stock/finished-availability` for reservation/free totals; non-salesman responses include `reservedPackets` and `freePackets`, while salesman response fields stay backward-compatible.
 - Start API/UI in separate terminals: `npm run dev:backend` and `npm run dev:frontend`.
 - Prisma commands from `backend/`: `npx prisma format`, `npx prisma validate`, `npx prisma migrate dev`, `npx prisma migrate status`.
@@ -41,7 +42,7 @@ Step 26 - Order approval and rejection
 15-16 [x]: BOM CRUD/versioning/cloning; planned-consumption calculator.
 17-21 [x] production start/issues, completion/output/scrap, variance/tolerance, run history/edit/cancel, API benchmark steps 1-3.
 ### Phase 4 - Sales loop
-22 [x] customer/default price resolution and salesman catalog; 23 [x] order creation with idempotent clientRef; 24 [x] role-scoped order lists/details, status timeline, and salesman customer sales; 25 [x] finished-goods availability, reservations, and shortage checks; 26-33 [ ] approval; GST; invoicing; dispatch; payments; credit notes; shortage flow; benchmark steps 4-7.
+22 [x] customer/default price resolution and salesman catalog; 23 [x] order creation with idempotent clientRef; 24 [x] role-scoped order lists/details, status timeline, and salesman customer sales; 25 [x] finished-goods availability, reservations, and shortage checks; 26 [x] admin order edit/approve/reject/cancel; 27-33 [ ] GST; invoicing; dispatch; payments; credit notes; shortage flow; benchmark steps 4-7.
 ### Phase 5 - Costing
 34-36 [ ] weighted average; overhead allocation; packet cost/margin.
 ### Phase 6 - Reports and PDF
@@ -52,6 +53,7 @@ Step 26 - Order approval and rejection
 57-60 [ ] full benchmark/fixes; deployment; README/design note; demo/interview/final audit.
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
+- Step 26 (2026-11-25): Added transactional admin edits, stock-checked approvals with row locks, rejection/cancellation, audit notes, and strict routes. Files: order status helper, order service/routes, new admin/unit tests, and this log. `npm test` passes (140; baseline 131), including all 9 new tests. Decision: approval has no force option; partial quantities fit available stock, and invoiced/dispatched cancellation remains for the credit-note flow.
 - Step 25 (2026-11-25): Added pure shortage math, read-only order availability, reservation accounting for approved/invoiced undelivered quantities, and explicit stock reservation/free fields for stock readers. Files: availability/shortage services, order/stock routes, permissions, new tests, and this log. `npm test` passes (131; baseline 120); tests build benchmark FG stock at 238 through production APIs and verify partial-dispatch ledger/reservation changes. Decision: preserve the existing `availablePackets` value and exact SALESMAN response shape; the additive fields are included for non-SALESMAN stock readers.
 - Step 24 (2026-11-25): Added role-scoped order list/detail and salesman customer-sales reads, status labels/timeline, and a pure IST day-range helper. Files: order service/routes, auth capability middleware, IST helper, new unit/API tests, and this log. `npm test` passes (120; baseline 107). Decision: `from` starts at IST midnight and `to` includes its full IST day via an exclusive next-day bound; customer sales exclude REJECTED and CANCELLED orders.
 - Step 23 (2026-11-25): Added strict, server-priced order creation with merged lines, transactional numbering/audit, and clientRef idempotency including concurrent retries; added integer order math. Files: order service/math, route, app mount, new tests, and this log. `npm test` passes (107; baseline 105); live API verified create 201 then same-ref retry 200 with the same order ID. Decision: mobile clients generate a UUID clientRef and retain it until a server response; taxable totals are labeled `taxableTotalPaise` because they exclude GST.
@@ -84,10 +86,10 @@ Step 26 - Order approval and rejection
 - `backend/prisma/`: schema, migrations (including append-only trigger and stock adjustments), and idempotent benchmark seed.
 - `backend/scripts/`: guarded reset/reseed, balance output, staged benchmark checker, and API-only benchmark playback.
 - `backend/src/config/`, `middleware/`: role/capability matrix, auth, validation, and centralized error handling.
-- `backend/src/lib/`: Decimal money/GST/units/variance/BOM/pricing/order/shortage math, IST date ranges, FY, states, errors, audit, and async helpers.
-- `backend/src/routes/`: health, auth, audit, stock/adjustments/finished availability, purchases, BOMs, production, catalog, order create/list/detail/availability, items, customers/prices, suppliers, settings, and users.
-- `backend/src/services/`: auth, append-only ledger, stock/availability, adjustment, purchase/costing/pricing/order create/read/customer-sales, BOM, production-run start/completion/variance/history/cancellation, master data, settings, and user logic.
-- `backend/tests/`: API/unit suites including benchmark, pricing, catalog, order create/read/availability, shortage math, order math, and IST date coverage; `helpers/db.js` and setup guard test operations to `oda_test`.
+- `backend/src/lib/`: Decimal money/GST/units/variance/BOM/pricing/order/shortage math, order transitions, IST date ranges, FY, states, errors, audit, and async helpers.
+- `backend/src/routes/`: health, auth, audit, stock/adjustments/finished availability, purchases, BOMs, production, catalog, order create/read/availability/admin changes, items, customers/prices, suppliers, settings, and users.
+- `backend/src/services/`: auth, append-only ledger, stock/availability, adjustment, purchase/costing/pricing/order create/read/admin changes/customer-sales, BOM, production-run start/completion/variance/history/cancellation, master data, settings, and user logic.
+- `backend/tests/`: API/unit suites including benchmark, pricing, catalog, order create/read/availability/admin changes, order transitions/math, shortage math, and IST date coverage; `helpers/db.js` and setup guard test operations to `oda_test`.
 - `frontend/`: Vite/React UI, Tailwind, API client, and `/api` proxy.
 
 ## API endpoints (METHOD path - roles - purpose)
@@ -96,7 +98,7 @@ Step 26 - Order approval and rejection
 - `/api/stock`: `GET /summary?type=`, `/ledger?itemId=&from=&to=`, `/items/:id/balance` ADMIN/PRODUCTION/ACCOUNTANT/OWNER; `GET /finished-availability` also SALESMAN, with reserved/free fields for non-salesman roles; `POST /adjustments` ADMIN/PRODUCTION; `GET /adjustments` stock-read roles.
 - `/api/purchases`: `POST /` PRODUCTION/ADMIN; `GET /?page=&limit=&from=&to=&supplierId=` and `GET /:id` PRODUCTION/ADMIN/ACCOUNTANT/OWNER. Receipts write ledger and audit atomically.
 - `/api/catalog`: `GET /order-items?customerId=` SALESMAN/ADMIN; salesmen can only access assigned customers. Returns priced active finished goods and current packet balances.
-- `/api/orders`: `POST /` SALESMAN creates SUBMITTED orders using server-resolved prices; `GET /?status=&customerId=&salesmanId=&from=&to=&q=&page=&limit=` and `GET /:id` SALESMAN/ADMIN/OWNER/ACCOUNTANT, with salesmen restricted to their own orders; `GET /my/customer-sales?from=&to=` SALESMAN-only; `GET /:id/availability` ADMIN/OWNER.
+- `/api/orders`: `POST /` SALESMAN creates SUBMITTED orders using server-resolved prices; `GET /?status=&customerId=&salesmanId=&from=&to=&q=&page=&limit=` and `GET /:id` SALESMAN/ADMIN/OWNER/ACCOUNTANT, with salesmen restricted to their own orders; `GET /my/customer-sales?from=&to=` SALESMAN-only; `GET /:id/availability` ADMIN/OWNER; `PATCH /:id/lines`, `POST /:id/approve`, `POST /:id/reject`, and `POST /:id/cancel` ADMIN-only. Approval atomically checks unreserved finished stock and records the frozen snapshot/audit without writing ledger movements.
 - `/api/items`: `GET /?type=&active=`, `GET /:id` authenticated; `POST /`, `PATCH /:id` ADMIN.
 - `/api/customers`: `GET /?type=&active=`, `GET /:id`, `GET /:id/prices` authenticated (salesmen assigned customers only); `POST /`, `PATCH /:id`, `PUT /:id/prices` ADMIN.
 - `/api/suppliers`: `GET /?active=`, `GET /:id` authenticated; `POST /`, `PATCH /:id` ADMIN. `/api/settings`: `GET /` authenticated; `PUT /:key` ADMIN.
@@ -124,6 +126,7 @@ Step 26 - Order approval and rejection
 - Order list and customer-sales date filters are YYYY-MM-DD IST calendar days; `to` is inclusive and implemented as an exclusive next-day instant.
 - Availability reservations count effective quantities on APPROVED/INVOICED orders less dispatched quantities per item; SUBMITTED, REJECTED, CANCELLED, and DISPATCHED orders do not reserve.
 - `availablePackets` retains the established reservation-adjusted value; new `reservedPackets`/`freePackets` fields are limited to non-SALESMAN finished-stock responses to preserve the existing exact SALESMAN payload.
+- Order approval blocks on shortage with no force flag; admins can approve a smaller quantity. Manual cancellation is only for SUBMITTED/APPROVED orders; INVOICED/DISPATCHED cancellation belongs to the credit-note flow.
 
 ## Assumptions (copy into README at the end)
 - Project source and project guidance live at the Git repository root.
@@ -136,6 +139,7 @@ Step 26 - Order approval and rejection
 - Plan endpoint requires exactly one mode; issued quantities are interpreted in the selected BOM item's dimension and converted to base units.
 
 ## Known issues / TODO
+- Order approval blocks on stock shortage with no force option; invoiced/dispatched cancellation remains unavailable until the credit-note flow.
 - `npm install` reported 13 backend and 4 frontend dependency audit findings; review before deployment.
 - No refresh-token or logout endpoint yet; access tokens expire after 12 hours, and deactivated or deleted accounts are rejected on each request.
 - No Step 05-specific known issues.

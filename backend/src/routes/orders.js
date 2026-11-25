@@ -13,6 +13,12 @@ import { requireAnyCapability } from '../middleware/auth.js';
 import { isValidIstDate } from '../lib/istDate.js';
 import { prisma } from '../lib/prisma.js';
 import { checkOrderAvailability } from '../services/availabilityService.js';
+import {
+  approveOrder,
+  cancelOrder,
+  editOrder,
+  rejectOrder
+} from '../services/orderService.js';
 
 const router = Router();
 const dateSchema = z.string().refine(
@@ -69,6 +75,40 @@ const orderSchema = z.object({
   notes: z.string().max(500).optional(),
   lines: z.array(lineSchema).min(1).max(50)
 }).strict();
+const lineOverrideSchema = z.object({
+  lineId: z.number().int().positive().max(2147483647),
+  approvedQty: z.number().int().min(0).max(100000).optional(),
+  approvedPricePaise: z.number().int().min(1).max(10000000).optional()
+}).strict();
+const lineOverridesSchema = z.array(lineOverrideSchema).min(1).max(50)
+  .superRefine((lines, context) => {
+    const seen = new Set();
+    lines.forEach((line, index) => {
+      if (seen.has(line.lineId)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'lineId values must be unique',
+          path: [index, 'lineId']
+        });
+      }
+      seen.add(line.lineId);
+    });
+  });
+const noteSchema = z.string().trim().max(300).optional();
+const editOrderSchema = z.object({
+  lines: lineOverridesSchema,
+  note: noteSchema
+}).strict();
+const approveOrderSchema = z.preprocess(
+  (value) => value === undefined ? {} : value,
+  z.object({
+    lines: lineOverridesSchema.optional(),
+    note: noteSchema
+  }).strict()
+);
+const reasonSchema = z.object({
+  reason: z.string().trim().min(3).max(300)
+}).strict();
 
 router.get(
   '/',
@@ -107,6 +147,46 @@ router.get(
   validate({ params: idParamsSchema }),
   asyncHandler(async (req, res) => {
     res.json(await getOrderDetails(prisma, req.params.id, req.user));
+  })
+);
+
+router.patch(
+  '/:id/lines',
+  authenticate,
+  requireCapability('orders:approve'),
+  validate({ params: idParamsSchema, body: editOrderSchema }),
+  asyncHandler(async (req, res) => {
+    res.json(await editOrder(req.user, req.params.id, req.body));
+  })
+);
+
+router.post(
+  '/:id/approve',
+  authenticate,
+  requireCapability('orders:approve'),
+  validate({ params: idParamsSchema, body: approveOrderSchema }),
+  asyncHandler(async (req, res) => {
+    res.json(await approveOrder(req.user, req.params.id, req.body));
+  })
+);
+
+router.post(
+  '/:id/reject',
+  authenticate,
+  requireCapability('orders:approve'),
+  validate({ params: idParamsSchema, body: reasonSchema }),
+  asyncHandler(async (req, res) => {
+    res.json(await rejectOrder(req.user, req.params.id, req.body));
+  })
+);
+
+router.post(
+  '/:id/cancel',
+  authenticate,
+  requireCapability('orders:approve'),
+  validate({ params: idParamsSchema, body: reasonSchema }),
+  asyncHandler(async (req, res) => {
+    res.json(await cancelOrder(req.user, req.params.id, req.body));
   })
 );
 

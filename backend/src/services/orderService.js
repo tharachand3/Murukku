@@ -10,6 +10,9 @@ import { effectivePricePaise, effectiveQty } from '../lib/orderMath.js';
 import { formatQty } from '../lib/units.js';
 import { notFound } from '../lib/errors.js';
 import { istDayRange } from '../lib/istDate.js';
+import { Prisma } from '@prisma/client';
+import { canTransition } from '../lib/orderStatus.js';
+import { checkOrderAvailability } from './availabilityService.js';
 
 const ORDER_STATUS_LABELS = Object.freeze({
   SUBMITTED: 'Submitted',
@@ -217,7 +220,9 @@ function presentOrderDetailLine(line) {
 }
 
 function auditNote(entry) {
-  return entry.after?.rejectReason ??
+  return entry.after?.note ??
+    entry.before?.note ??
+    entry.after?.rejectReason ??
     entry.after?.notes ??
     entry.before?.rejectReason ??
     entry.before?.notes ??
@@ -498,4 +503,270 @@ export async function createOrder(user, input) {
     }
     return resultFor(existing, user.id);
   }
+}
+
+function assertOrderId(orderId) {
+  if (!Number.isSafeInteger(orderId) || orderId <= 0 || orderId > POSTGRES_INT_MAX) {
+    throw badRequest('orderId must be a positive integer');
+  }
+}
+
+function invalidOrderStatus(order, to) {
+  return new AppError(
+    409,
+    'INVALID_STATUS',
+    `Cannot transition order from ${order.status} to ${to}`,
+    { from: order.status, to }
+  );
+}
+
+function requireTransition(order, to) {
+  if (!canTransition(order.status, to)) {
+    throw invalidOrderStatus(order, to);
+  }
+}
+
+async function reloadOrder(tx, orderId) {
+  const order = await tx.order.findUnique({
+    where: { id: orderId },
+    include: { lines: { orderBy: { id: 'asc' } } }
+  });
+  if (!order) {
+    throw notFound('Order not found');
+  }
+  return order;
+}
+
+async function lockAndLoadOrder(tx, orderId) {
+  await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
+  return reloadOrder(tx, orderId);
+}
+
+function orderAuditSnapshot(order, note) {
+  return {
+    id: order.id,
+    orderNo: order.orderNo,
+    status: order.status,
+    rejectReason: order.rejectReason,
+    approvedById: order.approvedById,
+    approvedAt: order.approvedAt,
+    lines: order.lines.map((line) => ({
+      lineId: line.id,
+      itemId: line.itemId,
+      qty: line.qty,
+      pricePaise: line.pricePaise,
+      approvedQty: line.approvedQty,
+      approvedPricePaise: line.approvedPricePaise,
+      effectiveQty: effectiveQty(line),
+      effectivePricePaise: effectivePricePaise(line)
+    })),
+    ...(note !== undefined ? { note } : {})
+  };
+}
+
+async function applyLineOverrides(tx, order, overrides = []) {
+  const orderLines = new Map(order.lines.map((line) => [line.id, line]));
+  for (const override of overrides) {
+    if (!orderLines.has(override.lineId)) {
+      throw new AppError(
+        422,
+        'LINE_NOT_IN_ORDER',
+        'Order line does not belong to this order',
+        { orderId: order.id, lineId: override.lineId }
+      );
+    }
+
+    const data = {};
+    if (override.approvedQty !== undefined) {
+      data.approvedQty = override.approvedQty;
+    }
+    if (override.approvedPricePaise !== undefined) {
+      data.approvedPricePaise = override.approvedPricePaise;
+    }
+    if (Object.keys(data).length > 0) {
+      await tx.orderLine.update({
+        where: { id: override.lineId },
+        data
+      });
+    }
+  }
+}
+
+export async function editOrder(user, orderId, input) {
+  assertUser(user);
+  assertOrderId(orderId);
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw badRequest('Order edit input must be an object');
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const before = await lockAndLoadOrder(tx, orderId);
+    if (before.status !== 'SUBMITTED') {
+      throw invalidOrderStatus(before, 'SUBMITTED');
+    }
+
+    const beforeSnapshot = orderAuditSnapshot(before);
+    await applyLineOverrides(tx, before, input.lines);
+    const after = await reloadOrder(tx, orderId);
+    await writeAudit(tx, {
+      userId: user.id,
+      action: 'UPDATE',
+      entity: 'Order',
+      entityId: orderId,
+      before: beforeSnapshot,
+      after: orderAuditSnapshot(after, input.note)
+    });
+    return getOrderDetails(tx, orderId, user);
+  }, { maxWait: 60000, timeout: 60000 });
+}
+
+async function fillApprovalSnapshot(tx, order) {
+  for (const line of order.lines) {
+    const data = {};
+    if (line.approvedQty === null) {
+      data.approvedQty = line.qty;
+    }
+    if (line.approvedPricePaise === null) {
+      data.approvedPricePaise = line.pricePaise;
+    }
+    if (Object.keys(data).length > 0) {
+      await tx.orderLine.update({ where: { id: line.id }, data });
+    }
+  }
+}
+
+async function lockApprovalItems(tx, lines) {
+  const itemIds = [...new Set(
+    lines.filter((line) => line.approvedQty > 0).map((line) => line.itemId)
+  )].sort((left, right) => left - right);
+  if (itemIds.length === 0) {
+    return;
+  }
+  await tx.$queryRaw`
+    SELECT id FROM "Item"
+    WHERE id IN (${Prisma.join(itemIds)})
+    ORDER BY id
+    FOR UPDATE
+  `;
+}
+
+export async function approveOrder(user, orderId, input = {}) {
+  assertUser(user);
+  assertOrderId(orderId);
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw badRequest('Order approval input must be an object');
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const before = await lockAndLoadOrder(tx, orderId);
+    requireTransition(before, 'APPROVED');
+    const beforeSnapshot = orderAuditSnapshot(before);
+    await applyLineOverrides(tx, before, input.lines);
+    let order = await reloadOrder(tx, orderId);
+    await fillApprovalSnapshot(tx, order);
+    order = await reloadOrder(tx, orderId);
+
+    if (!order.lines.some((line) => line.approvedQty > 0)) {
+      throw new AppError(
+        422,
+        'NOTHING_TO_APPROVE',
+        'No order line has an approved quantity greater than zero'
+      );
+    }
+
+    await lockApprovalItems(tx, order.lines);
+    const availability = await checkOrderAvailability(tx, orderId);
+    if (!availability.allCovered) {
+      throw new AppError(
+        409,
+        'INSUFFICIENT_STOCK',
+        availability.message,
+        availability
+      );
+    }
+
+    const approvedAt = new Date();
+    await tx.order.update({
+      where: { id: orderId },
+      data: {
+        status: 'APPROVED',
+        approvedById: user.id,
+        approvedAt
+      }
+    });
+    const after = await reloadOrder(tx, orderId);
+    await writeAudit(tx, {
+      userId: user.id,
+      action: 'APPROVE',
+      entity: 'Order',
+      entityId: orderId,
+      before: beforeSnapshot,
+      after: orderAuditSnapshot(after, input.note)
+    });
+    return getOrderDetails(tx, orderId, user);
+  }, { maxWait: 60000, timeout: 60000 });
+}
+
+export async function rejectOrder(user, orderId, input) {
+  assertUser(user);
+  assertOrderId(orderId);
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw badRequest('Order rejection input must be an object');
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const before = await lockAndLoadOrder(tx, orderId);
+    requireTransition(before, 'REJECTED');
+    const beforeSnapshot = orderAuditSnapshot(before);
+    await tx.order.update({
+      where: { id: orderId },
+      data: {
+        status: 'REJECTED',
+        rejectReason: input.reason
+      }
+    });
+    const after = await reloadOrder(tx, orderId);
+    await writeAudit(tx, {
+      userId: user.id,
+      action: 'REJECT',
+      entity: 'Order',
+      entityId: orderId,
+      before: beforeSnapshot,
+      after: orderAuditSnapshot(after, input.reason)
+    });
+    return getOrderDetails(tx, orderId, user);
+  }, { maxWait: 60000, timeout: 60000 });
+}
+
+export async function cancelOrder(user, orderId, input) {
+  assertUser(user);
+  assertOrderId(orderId);
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw badRequest('Order cancellation input must be an object');
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const before = await lockAndLoadOrder(tx, orderId);
+    if (
+      !['SUBMITTED', 'APPROVED'].includes(before.status) ||
+      !canTransition(before.status, 'CANCELLED')
+    ) {
+      throw invalidOrderStatus(before, 'CANCELLED');
+    }
+    const beforeSnapshot = orderAuditSnapshot(before);
+    await tx.order.update({
+      where: { id: orderId },
+      data: { status: 'CANCELLED' }
+    });
+    const after = await reloadOrder(tx, orderId);
+    await writeAudit(tx, {
+      userId: user.id,
+      action: 'CANCEL',
+      entity: 'Order',
+      entityId: orderId,
+      before: beforeSnapshot,
+      after: orderAuditSnapshot(after, input.reason)
+    });
+    return getOrderDetails(tx, orderId, user);
+  }, { maxWait: 60000, timeout: 60000 });
 }
