@@ -5,7 +5,7 @@ import { config } from '../src/config/env.js';
 import { app } from '../src/app.js';
 import { financialYearOf } from '../src/lib/fy.js';
 import { prisma } from '../src/lib/prisma.js';
-import { getBalance } from '../src/services/ledgerService.js';
+import { addMovement, getBalance } from '../src/services/ledgerService.js';
 import { db, resetDb, seedMinimal } from './helpers/db.js';
 
 let fixture;
@@ -13,6 +13,7 @@ let items;
 let bom;
 let production;
 let salesman;
+let supplier;
 
 function tokenFor(user) {
   return jwt.sign(
@@ -43,6 +44,28 @@ async function postRun(user, body = {}) {
     .post('/api/production/runs')
     .set(as(user))
     .send({ finishedItemId: items.finished.id, ...body });
+}
+
+async function postPurchase(user = production) {
+  return request(app)
+    .post('/api/purchases')
+    .set(as(user))
+    .send({
+      supplierId: supplier.id,
+      lines: [{
+        itemId: items.flour.id,
+        qty: '60',
+        unit: 'kg',
+        ratePerUnitRupees: '45'
+      }]
+    });
+}
+
+async function completeRun(user, runId, body) {
+  return request(app)
+    .post(`/api/production/runs/${runId}/complete`)
+    .set(as(user))
+    .send(body);
 }
 
 beforeEach(async () => {
@@ -118,6 +141,9 @@ beforeEach(async () => {
       role: 'SALESMAN'
     }
   });
+  supplier = await db.supplier.create({
+    data: { name: 'Production test supplier', stateCode: '33' }
+  });
 
   bom = await db.bom.create({
     data: {
@@ -141,7 +167,6 @@ beforeEach(async () => {
   const openingDate = new Date('2026-04-01T00:00:00.000Z');
   for (const [itemId, qtyChange, ratePaisePerBase] of [
     [items.flour.id, 100000, '4.2'],
-    [items.flour.id, 60000, '4.5'],
     [items.oil.id, 30000, '14'],
     [items.spice.id, 5000, '20'],
     [items.pouch.id, 500, '250'],
@@ -152,12 +177,8 @@ beforeEach(async () => {
       data: {
         itemId,
         qtyChange,
-        movementType: itemId === items.flour.id && ratePaisePerBase === '4.5'
-          ? 'PURCHASE'
-          : 'OPENING',
-        sourceType: itemId === items.flour.id && ratePaisePerBase === '4.5'
-          ? 'PURCHASE'
-          : 'OPENING',
+        movementType: 'OPENING',
+        sourceType: 'OPENING',
         sourceId: itemId,
         sourceRef: `TEST-OPENING-${itemId}-${ratePaisePerBase}`,
         ratePaisePerBase,
@@ -174,6 +195,8 @@ afterAll(async () => {
 
 describe('production run start and material issue', () => {
   it('creates a numbered run, snapshots the plan and issues the requested quantities', async () => {
+    const purchase = await postPurchase();
+    expect(purchase.status).toBe(201);
     const response = await postRun(production, { issues: benchmarkIssues() });
 
     expect(response.status).toBe(201);
@@ -277,5 +300,167 @@ describe('production run start and material issue', () => {
     const response = await postRun(salesman);
     expect(response.status).toBe(403);
     expect(await db.productionRun.count()).toBe(0);
+  });
+});
+
+describe('production run completion', () => {
+  it('completes the full benchmark run with packaging consumption, damage and output', async () => {
+    const purchase = await postPurchase();
+    expect(purchase.status).toBe(201);
+    const started = await postRun(production, { issues: benchmarkIssues() });
+    expect(started.status).toBe(201);
+
+    const response = await completeRun(production, started.body.id, {
+      actualGoodQty: 188,
+      rejectedFinishedQty: 2,
+      batchNo: 'BENCH-001',
+      expiryDate: '2027-11-25T00:00:00.000Z',
+      consumption: [
+        { itemId: items.pouch.id, qty: '188', unit: 'pcs', scrapQty: '6' },
+        { itemId: items.carton.id, qty: '9', unit: 'pcs' }
+      ]
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      runNo: started.body.runNo,
+      status: 'COMPLETED',
+      actualGoodQty: 188,
+      rejectedFinishedQty: 2,
+      materialCostPaise: 405500,
+      runningMaterialCostPaise: 405500,
+      runningMaterialCostDisplay: '4,055.00',
+      yieldVarianceBp: null,
+      yieldFlagged: false
+    });
+    expect(response.body.lines.find((line) => line.itemId === items.pouch.id)).toMatchObject({
+      plannedQty: 200,
+      issuedQty: 194,
+      scrapQty: 6,
+      costPaise: 48500
+    });
+    expect(response.body.lines.find((line) => line.itemId === items.carton.id)).toMatchObject({
+      plannedQty: 10,
+      issuedQty: 9,
+      scrapQty: 0,
+      costPaise: 13500
+    });
+    expect(response.body.ledgerRows).toHaveLength(4);
+    expect(response.body.ledgerRows.find((row) =>
+      row.movementType === 'PRODUCTION_OUTPUT'
+    )).toMatchObject({
+      itemId: items.finished.id,
+      qtyChange: 188,
+      ratePaisePerBase: null,
+      batchNo: 'BENCH-001'
+    });
+
+    const movements = await db.stockMovement.findMany({
+      where: { sourceType: 'PRODUCTION_RUN', sourceId: started.body.id },
+      orderBy: { id: 'asc' }
+    });
+    expect(movements).toHaveLength(7);
+    expect(movements.every((movement) => movement.sourceRef === started.body.runNo)).toBe(true);
+    expect(movements.map((movement) => movement.movementType)).toEqual([
+      'PRODUCTION_ISSUE',
+      'PRODUCTION_ISSUE',
+      'PRODUCTION_ISSUE',
+      'PRODUCTION_ISSUE',
+      'PRODUCTION_SCRAP',
+      'PRODUCTION_ISSUE',
+      'PRODUCTION_OUTPUT'
+    ]);
+
+    expect(await getBalance(db, items.flour.id)).toBe(120000);
+    expect(await getBalance(db, items.oil.id)).toBe(19500);
+    expect(await getBalance(db, items.spice.id)).toBe(3800);
+    expect(await getBalance(db, items.pouch.id)).toBe(306);
+    expect(await getBalance(db, items.carton.id)).toBe(21);
+    expect(await getBalance(db, items.finished.id)).toBe(238);
+    expect(await db.auditLog.count({
+      where: { entity: 'ProductionRun', entityId: started.body.id, action: 'UPDATE' }
+    })).toBe(1);
+    const runLines = await db.productionRunLine.findMany({ where: { runId: started.body.id } });
+    expect(runLines.every((line) => line.varianceBp === null && line.flagged === false)).toBe(true);
+  });
+
+  it('rejects completing a run twice with RUN_NOT_OPEN', async () => {
+    const started = await postRun(production);
+    const first = await completeRun(production, started.body.id, { actualGoodQty: 1 });
+    const second = await completeRun(production, started.body.id, { actualGoodQty: 1 });
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(409);
+    expect(second.body.error.code).toBe('RUN_NOT_OPEN');
+    expect(await db.stockMovement.count({
+      where: { sourceType: 'PRODUCTION_RUN', sourceId: started.body.id }
+    })).toBe(4);
+  });
+
+  it('rolls back output and consumption when packaging stock is insufficient', async () => {
+    const started = await postRun(production);
+    await addMovement(db, {
+      itemId: items.pouch.id,
+      qtyChange: -307,
+      movementType: 'ADJUSTMENT',
+      sourceType: 'ADJUSTMENT',
+      sourceId: 1,
+      sourceRef: 'TEST-LOW-POUCH-STOCK',
+      movementDate: new Date(),
+      userId: fixture.users.admin.id
+    });
+
+    const response = await completeRun(production, started.body.id, {
+      actualGoodQty: 188,
+      consumption: [
+        { itemId: items.pouch.id, qty: '188', unit: 'pcs', scrapQty: '6' },
+        { itemId: items.carton.id, qty: '9', unit: 'pcs' }
+      ]
+    });
+
+    expect(response.status).toBe(422);
+    expect(response.body.error.code).toBe('INSUFFICIENT_STOCK');
+    const run = await db.productionRun.findUnique({ where: { id: started.body.id } });
+    expect(run.status).toBe('ISSUED');
+    expect(run.actualGoodQty).toBeNull();
+    expect(await db.stockMovement.count({
+      where: { sourceType: 'PRODUCTION_RUN', sourceId: started.body.id }
+    })).toBe(3);
+    expect(await getBalance(db, items.pouch.id)).toBe(193);
+    expect(await getBalance(db, items.finished.id)).toBe(50);
+  });
+
+  it('rejects negative finished output', async () => {
+    const started = await postRun(production);
+    const response = await completeRun(production, started.body.id, { actualGoodQty: -1 });
+
+    expect(response.status).toBe(400);
+    expect(await db.productionRun.findUnique({
+      where: { id: started.body.id },
+      select: { status: true }
+    })).toMatchObject({ status: 'ISSUED' });
+  });
+
+  it('rejects consumption items outside the BOM without changing the run', async () => {
+    const started = await postRun(production);
+    const outsideItem = await db.item.create({
+      data: {
+        code: 'OUTSIDE-COMPONENT',
+        name: 'Outside component',
+        type: 'RAW',
+        baseUnitId: fixture.units.g.id,
+        displayUnitId: fixture.units.kg.id
+      }
+    });
+    const response = await completeRun(production, started.body.id, {
+      actualGoodQty: 188,
+      consumption: [{ itemId: outsideItem.id, qty: '1', unit: 'kg' }]
+    });
+
+    expect(response.status).toBe(400);
+    expect(await db.productionRun.findUnique({
+      where: { id: started.body.id },
+      select: { status: true }
+    })).toMatchObject({ status: 'ISSUED' });
   });
 });

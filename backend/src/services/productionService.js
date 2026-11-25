@@ -1,7 +1,7 @@
 import Decimal from 'decimal.js';
 import { writeAudit } from '../lib/audit.js';
 import { planFromBatches } from '../lib/bomMath.js';
-import { badRequest, notFound } from '../lib/errors.js';
+import { AppError, badRequest, notFound } from '../lib/errors.js';
 import { mulRateQty, paiseToRupeesString } from '../lib/money.js';
 import { formatQty, toBase, UNITS } from '../lib/units.js';
 import { prisma } from '../lib/prisma.js';
@@ -73,6 +73,35 @@ function convertIssue(issue, line) {
   }
   assertPositiveInt(qtyBase, 'qty');
   return qtyBase;
+}
+
+function convertCompletionQuantity(qty, unit, line, name) {
+  if (typeof unit !== 'string' || !Object.hasOwn(UNITS, unit)) {
+    throw badRequest(`Unsupported unit "${unit}"`);
+  }
+  if (UNITS[unit].dimension !== line.item.baseUnit.dimension) {
+    throw badRequest(`Unit "${unit}" does not match ${line.item.name}'s base-unit dimension`);
+  }
+
+  let qtyBase;
+  try {
+    qtyBase = toBase(qty, unit);
+  } catch (error) {
+    if (error instanceof RangeError || error instanceof TypeError) {
+      throw badRequest(error.message);
+    }
+    throw error;
+  }
+  if (!Number.isSafeInteger(qtyBase) || qtyBase < 0 || qtyBase > INTEGER_MAX) {
+    throw badRequest(`${name} must be a non-negative PostgreSQL integer`);
+  }
+  return qtyBase;
+}
+
+function assertPaiseAmount(value, name) {
+  if (!Number.isSafeInteger(value) || value < 0 || value > INTEGER_MAX) {
+    throw badRequest(`${name} exceeds the supported range`);
+  }
 }
 
 function prepareIssues(bom, issues) {
@@ -269,5 +298,197 @@ export async function startRun(userId, input) {
       after: completedRun
     });
     return presentRun(completedRun);
+  }, { maxWait: 10000, timeout: 30000 });
+}
+
+export async function completeRun(userId, runId, input) {
+  assertPositiveInt(userId, 'userId');
+  assertPositiveInt(runId, 'runId');
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw badRequest('Production completion input must be an object');
+  }
+  if (!Number.isSafeInteger(input.actualGoodQty) || input.actualGoodQty < 0 || input.actualGoodQty > INTEGER_MAX) {
+    throw badRequest('actualGoodQty must be a non-negative PostgreSQL integer');
+  }
+  const rejectedFinishedQty = input.rejectedFinishedQty ?? 0;
+  if (
+    !Number.isSafeInteger(rejectedFinishedQty) ||
+    rejectedFinishedQty < 0 ||
+    rejectedFinishedQty > INTEGER_MAX
+  ) {
+    throw badRequest('rejectedFinishedQty must be a non-negative PostgreSQL integer');
+  }
+  if (
+    input.consumption !== undefined &&
+    (!Array.isArray(input.consumption) ||
+      input.consumption.some((entry) => !entry || typeof entry !== 'object' || Array.isArray(entry)))
+  ) {
+    throw badRequest('consumption must be an array of consumption objects');
+  }
+  if (input.expiryDate !== undefined && input.expiryDate !== null &&
+      (!(input.expiryDate instanceof Date) || Number.isNaN(input.expiryDate.getTime()))) {
+    throw badRequest('expiryDate must be a valid Date');
+  }
+
+  const completedAt = new Date();
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "ProductionRun" WHERE id = ${runId} FOR UPDATE`;
+    const before = await tx.productionRun.findUnique({
+      where: { id: runId },
+      include: runInclude
+    });
+    if (!before) {
+      throw notFound('Production run not found');
+    }
+    if (before.status !== 'ISSUED') {
+      throw new AppError(409, 'RUN_NOT_OPEN', 'Production run is not open for completion', {
+        runId,
+        status: before.status
+      });
+    }
+
+    const linesByItemId = new Map(before.lines.map((line) => [line.itemId, line]));
+    const entries = input.consumption ?? [];
+    const seen = new Set();
+    const consumption = entries.map((entry) => {
+      assertPositiveInt(entry.itemId, 'itemId');
+      if (seen.has(entry.itemId)) {
+        throw badRequest('consumption cannot contain duplicate itemIds', {
+          itemId: entry.itemId
+        });
+      }
+      seen.add(entry.itemId);
+
+      const line = linesByItemId.get(entry.itemId);
+      if (!line) {
+        throw badRequest(`Item ${entry.itemId} is not in this BOM`);
+      }
+      const qtyBase = convertCompletionQuantity(entry.qty, entry.unit, line, 'qty');
+      const scrapQtyBase = convertCompletionQuantity(
+        entry.scrapQty ?? '0',
+        entry.scrapUnit ?? entry.unit,
+        line,
+        'scrapQty'
+      );
+      return { line, qtyBase, scrapQtyBase };
+    });
+
+    const ledgerRows = [];
+    for (const entry of consumption) {
+      const { line, qtyBase, scrapQtyBase } = entry;
+      if (qtyBase === 0 && scrapQtyBase === 0) {
+        continue;
+      }
+
+      const averageRate = await getAverageRate(tx, line.itemId, { asOf: completedAt });
+      const rate = new Decimal(
+        averageRate.toDecimalPlaces(6, Decimal.ROUND_HALF_UP).toString()
+      );
+      let additionalCostPaise = 0;
+      if (qtyBase > 0) {
+        const costPaise = mulRateQty(rate, qtyBase);
+        assertPaiseAmount(costPaise, 'Consumption cost');
+        additionalCostPaise += costPaise;
+        ledgerRows.push(await addMovement(tx, {
+          itemId: line.itemId,
+          qtyChange: -qtyBase,
+          movementType: 'PRODUCTION_ISSUE',
+          sourceType: 'PRODUCTION_RUN',
+          sourceId: before.id,
+          sourceRef: before.runNo,
+          ratePaisePerBase: rate,
+          batchNo: input.batchNo ?? before.batchNo,
+          movementDate: completedAt,
+          userId
+        }));
+      }
+      if (scrapQtyBase > 0) {
+        const scrapCostPaise = mulRateQty(rate, scrapQtyBase);
+        assertPaiseAmount(scrapCostPaise, 'Scrap cost');
+        additionalCostPaise += scrapCostPaise;
+        ledgerRows.push(await addMovement(tx, {
+          itemId: line.itemId,
+          qtyChange: -scrapQtyBase,
+          movementType: 'PRODUCTION_SCRAP',
+          sourceType: 'PRODUCTION_RUN',
+          sourceId: before.id,
+          sourceRef: before.runNo,
+          ratePaisePerBase: rate,
+          batchNo: input.batchNo ?? before.batchNo,
+          movementDate: completedAt,
+          userId
+        }));
+      }
+
+      const issuedQty = line.issuedQty + qtyBase + scrapQtyBase;
+      const scrapQty = line.scrapQty + scrapQtyBase;
+      const costPaise = line.costPaise + additionalCostPaise;
+      if (issuedQty > INTEGER_MAX || scrapQty > INTEGER_MAX) {
+        throw badRequest(`Issued quantity exceeds the supported range for "${line.item.name}"`);
+      }
+      assertPaiseAmount(costPaise, `Material cost for "${line.item.name}"`);
+      await tx.productionRunLine.update({
+        where: { runId_itemId: { runId: before.id, itemId: line.itemId } },
+        data: {
+          issuedQty,
+          scrapQty,
+          costPaise,
+          ratePaisePerBase: rate
+        }
+      });
+    }
+
+    if (input.actualGoodQty > 0) {
+      ledgerRows.push(await addMovement(tx, {
+        itemId: before.finishedItemId,
+        qtyChange: input.actualGoodQty,
+        movementType: 'PRODUCTION_OUTPUT',
+        sourceType: 'PRODUCTION_RUN',
+        sourceId: before.id,
+        sourceRef: before.runNo,
+        batchNo: input.batchNo ?? before.batchNo ?? before.runNo,
+        expiryDate: input.expiryDate,
+        movementDate: completedAt,
+        userId
+      }));
+    }
+
+    const updatedLines = await tx.productionRunLine.findMany({
+      where: { runId: before.id },
+      select: { costPaise: true }
+    });
+    const materialCostPaise = updatedLines.reduce((total, line) => {
+      const next = total + line.costPaise;
+      assertPaiseAmount(next, 'Production material cost');
+      return next;
+    }, 0);
+    const after = await tx.productionRun.update({
+      where: { id: before.id },
+      data: {
+        status: 'COMPLETED',
+        actualGoodQty: input.actualGoodQty,
+        rejectedFinishedQty,
+        materialCostPaise,
+        completedAt,
+        completedById: userId,
+        ...(input.batchNo !== undefined && input.batchNo !== null
+          ? { batchNo: input.batchNo }
+          : {}),
+        ...(input.notes !== undefined ? { notes: input.notes } : {})
+      },
+      include: runInclude
+    });
+    await writeAudit(tx, {
+      userId,
+      action: 'UPDATE',
+      entity: 'ProductionRun',
+      entityId: before.id,
+      before,
+      after
+    });
+    return {
+      ...presentRun(after),
+      ledgerRows
+    };
   }, { maxWait: 10000, timeout: 30000 });
 }

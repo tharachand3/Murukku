@@ -38,7 +38,7 @@ const EXPECTED = {
       CARTON: '30 pcs',
       MURUKKU200: '50 packet'
     },
-    documents: { issuedProductionRuns: 1 }
+    documents: { startedProductionRuns: 1 }
   },
   'after-run': {
     stock: {
@@ -49,7 +49,8 @@ const EXPECTED = {
       CARTON: '21 pcs',
       MURUKKU200: '238 packet'
     },
-    documents: { completedProductionRuns: 1 }
+    documents: { completedProductionRuns: 1 },
+    completedRun: { actualGoodQty: 188 }
   },
   'after-dispatch': {
     stock: { MURUKKU200: '88 packet' },
@@ -67,9 +68,7 @@ const EXPECTED = {
 const STAGES = Object.keys(EXPECTED);
 const DOCUMENT_READERS = {
   purchases: (db) => db.purchase.count(),
-  issuedProductionRuns: (db) => db.productionRun.count({
-    where: { status: 'ISSUED' }
-  }),
+  startedProductionRuns: (db) => db.productionRun.count(),
   completedProductionRuns: (db) => db.productionRun.count({
     where: { status: 'COMPLETED' }
   }),
@@ -133,6 +132,21 @@ const checks = Object.entries(EXPECTED).flatMap(([stage, expectations]) => [
           }
           return (await getAverageRate(db, item.id)).toString();
         }
+      }]
+    : []),
+  ...(expectations.completedRun
+    ? [{
+        name: `run COMPLETED with actualGoodQty ${expectations.completedRun.actualGoodQty}`,
+        kind: 'document',
+        stage,
+        expected: true,
+        actualFn: async (db) => Boolean(await db.productionRun.findFirst({
+          where: {
+            status: 'COMPLETED',
+            actualGoodQty: expectations.completedRun.actualGoodQty
+          },
+          select: { id: true }
+        }))
       }]
     : []),
   ...Object.entries(expectations.documents).map(([document, expected]) => ({
