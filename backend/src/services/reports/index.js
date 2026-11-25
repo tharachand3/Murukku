@@ -25,3 +25,5 @@ import stockSummary from './stockSummary.js';
 registerReport(stockSummary);
 import stockLedger from './stockLedger.js';
 registerReport(stockLedger);
+import purchaseRegister from './purchaseRegister.js';
+registerReport(purchaseRegister);
