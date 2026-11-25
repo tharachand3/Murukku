@@ -5,7 +5,7 @@ import { getBalances } from '../src/services/ledgerService.js';
 import { getShortageSummary } from '../src/services/availabilityService.js';
 import { formatQty } from '../src/lib/units.js';
 import { computeRunVariance } from '../src/services/varianceService.js';
-import { formatPaiseDecimalAsRupees } from '../src/lib/costMath.js';
+import { formatPaiseDecimalAsRupees, marginPerPacket } from '../src/lib/costMath.js';
 
 const EXPECTED = {
   opening: {
@@ -340,6 +340,43 @@ checks.push(
       return run.costPerPacketPaise === null
         ? null
         : formatPaiseDecimalAsRupees(run.costPerPacketPaise);
+    }
+  },
+  {
+    name: 'cost sheet: material 405500, overhead 180000, margin bp 3771',
+    kind: 'document',
+    stage: 'final',
+    expected: JSON.stringify({
+      materialCostPaise: 405500,
+      overheadCostPaise: 180000,
+      marginBp: 3771
+    }),
+    actualFn: async (db) => {
+      const run = await db.productionRun.findFirst({
+        where: { status: 'COMPLETED', actualGoodQty: { gt: 0 } },
+        orderBy: [{ completedAt: 'desc' }, { id: 'desc' }],
+        select: {
+          materialCostPaise: true,
+          overheadCostPaise: true,
+          costPerPacketPaise: true,
+          finishedItem: { select: { sellingPricePaise: true } }
+        }
+      });
+      if (!run) {
+        return 'SKIPPED';
+      }
+      const margin = run.finishedItem.sellingPricePaise === null ||
+          run.costPerPacketPaise === null
+        ? null
+        : marginPerPacket({
+            sellingPricePaise: run.finishedItem.sellingPricePaise,
+            costPerPacketPaise: run.costPerPacketPaise
+          });
+      return JSON.stringify({
+        materialCostPaise: run.materialCostPaise ?? 0,
+        overheadCostPaise: run.overheadCostPaise ?? 0,
+        marginBp: margin?.marginBp ?? null
+      });
     }
   },
   {

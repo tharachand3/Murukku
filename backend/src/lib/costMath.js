@@ -105,3 +105,74 @@ export function formatPaiseDecimalAsRupees(decimalPaise, places = 2) {
     maxDecimals: places
   });
 }
+
+export function splitCostPerPacket({ materialCostPaise, overheadCostPaise, goodQty }) {
+  if (!Number.isSafeInteger(goodQty) || goodQty <= 0) {
+    return null;
+  }
+  assertInteger(materialCostPaise, 'Material cost');
+  assertInteger(overheadCostPaise, 'Overhead cost');
+
+  const materialPerPacket = new CostDecimal(materialCostPaise)
+    .div(goodQty)
+    .toDecimalPlaces(4, Decimal.ROUND_HALF_UP);
+  const overheadPerPacket = new CostDecimal(overheadCostPaise)
+    .div(goodQty)
+    .toDecimalPlaces(4, Decimal.ROUND_HALF_UP);
+  return {
+    materialPerPacket,
+    overheadPerPacket,
+    totalPerPacket: materialPerPacket.plus(overheadPerPacket)
+      .toDecimalPlaces(4, Decimal.ROUND_HALF_UP)
+  };
+}
+
+export function marginPerPacket({ sellingPricePaise, costPerPacketPaise }) {
+  if (
+    sellingPricePaise === null ||
+    sellingPricePaise === undefined ||
+    costPerPacketPaise === null ||
+    costPerPacketPaise === undefined ||
+    !Number.isSafeInteger(sellingPricePaise) ||
+    sellingPricePaise <= 0
+  ) {
+    return null;
+  }
+  const marginPaise = new CostDecimal(sellingPricePaise.toString())
+    .minus(costPerPacketPaise instanceof Decimal
+      ? costPerPacketPaise.toString()
+      : costPerPacketPaise)
+    .toDecimalPlaces(4, Decimal.ROUND_HALF_UP);
+  const marginBp = Number(
+    marginPaise.times(10000).div(sellingPricePaise)
+      .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
+      .toString()
+  );
+  if (!Number.isSafeInteger(marginBp)) {
+    throw new RangeError('Margin basis points exceed the safe integer range');
+  }
+  return { marginPaise, marginBp };
+}
+
+export function formatMarginPct(bp) {
+  if (!Number.isSafeInteger(bp)) {
+    throw new RangeError('Margin basis points must be a safe integer');
+  }
+  const sign = bp < 0 ? '-' : '';
+  const absolute = BigInt(Math.abs(bp));
+  const whole = absolute / 100n;
+  const fraction = String(absolute % 100n).padStart(2, '0');
+  return `${sign}${whole}.${fraction}%`;
+}
+
+export function lineCostVariance({ plannedQty, issuedQty, ratePaisePerBase }) {
+  assertInteger(plannedQty, 'Planned quantity');
+  assertInteger(issuedQty, 'Issued quantity');
+  const plannedCostPaise = mulRateQty(ratePaisePerBase, plannedQty);
+  const actualCostPaise = mulRateQty(ratePaisePerBase, issuedQty);
+  const costVariancePaise = actualCostPaise - plannedCostPaise;
+  if (!Number.isSafeInteger(costVariancePaise)) {
+    throw new RangeError('Cost variance exceeds the safe integer range');
+  }
+  return { plannedCostPaise, actualCostPaise, costVariancePaise };
+}

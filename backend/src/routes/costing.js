@@ -8,6 +8,8 @@ import {
   getAverageRates,
   getCostBreakdown
 } from '../services/costingService.js';
+import { getProductCosting, getRunCostSheet } from '../services/costSheetService.js';
+import { isValidIstDate } from '../lib/istDate.js';
 
 const router = Router();
 const dateOnlySchema = z.string()
@@ -32,6 +34,37 @@ const detailQuerySchema = z.object({ asOf: asOfSchema });
 const idParamsSchema = z.object({
   id: z.coerce.number().int().positive().max(2147483647)
 });
+const costSheetParamsSchema = z.object({
+  id: z.coerce.number().int().positive().max(2147483647)
+}).strict();
+const periodDateSchema = z.string().refine(isValidIstDate, {
+  message: 'Date must be a valid YYYY-MM-DD IST calendar day'
+});
+const productCostingQuerySchema = z.object({
+  from: periodDateSchema.optional(),
+  to: periodDateSchema.optional(),
+  finishedItemId: z.coerce.number().int().positive().max(2147483647).optional()
+}).strict();
+
+router.get(
+  '/runs/:id/sheet',
+  authenticate,
+  requireCapability('costing:read'),
+  validate({ params: costSheetParamsSchema }),
+  asyncHandler(async (req, res) => {
+    res.json(await getRunCostSheet(prisma, req.params.id));
+  })
+);
+
+router.get(
+  '/products',
+  authenticate,
+  requireCapability('costing:read'),
+  validate({ query: productCostingQuerySchema }),
+  asyncHandler(async (req, res) => {
+    res.json(await getProductCosting(prisma, req.query));
+  })
+);
 
 router.get(
   '/average-rates',
