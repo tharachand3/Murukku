@@ -25,6 +25,7 @@ import invoicesRouter from './routes/invoices.js';
 import dispatchesRouter from './routes/dispatches.js';
 import paymentsRouter from './routes/payments.js';
 import creditNotesRouter from './routes/creditNotes.js';
+import costingRouter from './routes/costing.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -56,6 +57,7 @@ app.use('/api/invoices', invoicesRouter);
 app.use('/api/dispatches', dispatchesRouter);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/credit-notes', creditNotesRouter);
+app.use('/api/costing', costingRouter);
 
 if (process.env.NODE_ENV === 'test') {
   app.get('/api/_whoami', authenticate, (req, res) => {

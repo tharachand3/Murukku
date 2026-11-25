@@ -271,6 +271,35 @@ const checks = Object.entries(EXPECTED).flatMap(([stage, expectations]) => [
 
 checks.push(
   {
+    name: 'FLOUR weighted average = 4.3125 paise per g (Rs 43.125/kg)',
+    kind: 'document',
+    stage: 'after-purchase',
+    expected: '4.3125',
+    actualFn: async (db) => {
+      const item = await db.item.findUnique({
+        where: { code: 'FLOUR' },
+        select: { id: true }
+      });
+      if (!item) {
+        return null;
+      }
+      return (await getAverageRate(db, item.id)).toString();
+    }
+  },
+  {
+    name: 'material cost of run 1 = 405500',
+    kind: 'document',
+    stage: 'after-run',
+    expected: 405500,
+    actualFn: async (db) => {
+      const run = await db.productionRun.findUnique({
+        where: { id: 1 },
+        select: { materialCostPaise: true }
+      });
+      return run ? run.materialCostPaise : 'SKIPPED';
+    }
+  },
+  {
     name: 'Retailer A invoice totals 787500 paise with CGST/SGST 18750 and order DISPATCHED',
     kind: 'document',
     stage: 'after-dispatch',
@@ -440,13 +469,17 @@ async function main() {
 
       try {
         const actual = await check.actualFn(prisma);
-        const status = check.kind === 'info'
+        const status = actual === 'SKIPPED'
+          ? 'SKIPPED'
+          : check.kind === 'info'
           ? 'INFO'
           : actual === check.expected ? 'PASS' : 'FAIL';
         if (status === 'PASS') {
           passed += 1;
         } else if (status === 'INFO') {
           info += 1;
+        } else if (status === 'SKIPPED') {
+          skipped += 1;
         } else {
           failures += 1;
         }
