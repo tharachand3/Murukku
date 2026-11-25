@@ -6,6 +6,7 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(16),
   PORT: z.coerce.number().int().positive().default(4000),
   CORS_ORIGIN: z.string().url().default('http://localhost:5173'),
+  PUBLIC_BASE_URL: z.string().url().optional(),
   TZ: z.string().default('Asia/Kolkata')
 });
 

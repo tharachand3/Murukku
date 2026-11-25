@@ -27,6 +27,7 @@ import paymentsRouter from './routes/payments.js';
 import creditNotesRouter from './routes/creditNotes.js';
 import costingRouter from './routes/costing.js';
 import reportsRouter from './routes/reports.js';
+import publicInvoicesRouter from './routes/publicInvoices.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -41,6 +42,7 @@ app.use((req, res, next) => {
 });
 
 app.use('/api', healthRouter);
+app.use('/api/public', publicInvoicesRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/audit', auditRouter);
 app.use('/api/stock', stockRouter);
