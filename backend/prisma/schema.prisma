@@ -442,6 +442,7 @@ model Invoice {
   createdById            Int
   createdBy              User          @relation(fields: [createdById], references: [id])
   createdAt              DateTime      @default(now())
+  snapshot               Json?
   lines                  InvoiceLine[]
   dispatches             Dispatch[]
   payments               Payment[]

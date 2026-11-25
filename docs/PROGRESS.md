@@ -2,11 +2,11 @@
 Last updated: 2026-11-25 by Copilot
 
 ## Next Step
-Step 28 - Create GST invoice from an approved order
+Step 29 - Dispatch invoiced goods
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install`; start/stop PostgreSQL on port 5433 with `npm run db:up` / `npm run db:down`.
-- Create `oda_test` once: `docker compose exec -T db createdb -U oda oda_test`. From `backend/`, set `$env:DATABASE_URL = 'postgresql://oda:oda@localhost:5433/oda_test?schema=public'`, run `npx prisma migrate deploy`, then `Remove-Item Env:DATABASE_URL`; Vitest refuses non-test databases.
+- Create `oda_test` once: `docker compose exec -T db createdb -U oda oda_test`. From `backend/`, set `$env:DATABASE_URL = 'postgresql://oda:oda@localhost:5433/oda_test?schema=public'`, run `npx prisma migrate deploy` and `npx prisma generate`, then `Remove-Item Env:DATABASE_URL`; Vitest refuses non-test databases. Step 28 migration `20261125173751_invoice_snapshot_immutable` is applied to `oda_test`.
 - Run backend tests from `backend/`: `npm test`. Build the frontend with `npm --prefix frontend run build`.
 - Run the API benchmark from `backend/` after `npm run seed:reset` with the API running: `npm run bench:play` (optional `-- --upto=1|2|3`, `API_URL` overrides the default); then run `npm run bench:check -- --stage=after-run`.
 - Order catalog: authenticated `GET /api/catalog/order-items?customerId=<id>` for SALESMAN/ADMIN; customer prices override defaults, and items without a positive price are omitted.
@@ -15,6 +15,7 @@ Step 28 - Create GST invoice from an approved order
 - Check stock before approval with `GET /api/orders/:id/availability` (ADMIN/OWNER). Approved/invoiced undispatched quantities are reserved; partial dispatch reduces both on-hand and reservation.
 - Admin order changes require `orders:approve`: `PATCH /api/orders/:id/lines`, `POST /api/orders/:id/approve`, `POST /api/orders/:id/reject`, and `POST /api/orders/:id/cancel`. Approval freezes effective quantities/prices and requires enough unreserved stock; partial approval is allowed, and manual cancellation is limited to SUBMITTED/APPROVED.
 - Preview GST with `GET /api/orders/:id/invoice-preview` (ADMIN/ACCOUNTANT/OWNER); only SUBMITTED/APPROVED orders are previewable. Tax is rounded per line and summed; preview does not create invoices or consume numbers.
+- Create an invoice from an APPROVED order with `POST /api/invoices` (ADMIN); read/filter invoices with `GET /api/invoices` and `GET /api/invoices/:id` (ADMIN/ACCOUNTANT/OWNER). Posted invoices snapshot seller/buyer/order and line tax data; the database blocks invoice deletes, line edits, and changes to posted invoice fields.
 - Stock readers can use `GET /api/stock/finished-availability` for reservation/free totals; non-salesman responses include `reservedPackets` and `freePackets`, while salesman response fields stay backward-compatible.
 - Start API/UI in separate terminals: `npm run dev:backend` and `npm run dev:frontend`.
 - Prisma commands from `backend/`: `npx prisma format`, `npx prisma validate`, `npx prisma migrate dev`, `npx prisma migrate status`.
@@ -43,7 +44,7 @@ Step 28 - Create GST invoice from an approved order
 15-16 [x]: BOM CRUD/versioning/cloning; planned-consumption calculator.
 17-21 [x] production start/issues, completion/output/scrap, variance/tolerance, run history/edit/cancel, API benchmark steps 1-3.
 ### Phase 4 - Sales loop
-22 [x] customer/default price resolution and salesman catalog; 23 [x] order creation with idempotent clientRef; 24 [x] role-scoped order lists/details, status timeline, and salesman customer sales; 25 [x] finished-goods availability, reservations, and shortage checks; 26 [x] admin order edit/approve/reject/cancel; 27 [x] per-line GST calculator and order invoice preview; 28-33 [ ] posted invoices; dispatch; payments; credit notes; shortage flow; benchmark steps 4-7.
+22 [x] customer/default price resolution and salesman catalog; 23 [x] order creation with idempotent clientRef; 24 [x] role-scoped order lists/details, status timeline, and salesman customer sales; 25 [x] finished-goods availability, reservations, and shortage checks; 26 [x] admin order edit/approve/reject/cancel; 27 [x] per-line GST calculator and order invoice preview; 28 [x] immutable GST invoices; 29-33 [ ] dispatch; payments; credit notes; shortage flow; benchmark steps 4-7.
 ### Phase 5 - Costing
 34-36 [ ] weighted average; overhead allocation; packet cost/margin.
 ### Phase 6 - Reports and PDF
@@ -54,6 +55,7 @@ Step 28 - Create GST invoice from an approved order
 57-60 [ ] full benchmark/fixes; deployment; README/design note; demo/interview/final audit.
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
+- Step 28 (2026-11-25): Added transactional invoice creation from approved orders, FY numbering, seller/buyer/order and line snapshots, immutable DB triggers, filtered list/detail APIs, and order timeline audit. Files: schema/migration, invoice service/route, app mount, new invoice tests, data model, and this log. `npm test` passes (161; baseline 152), including 9 new tests; migration deployed to `oda_test`. Decision: invoice and invoice-line records are immutable except one invoice cancellation update; invoice creation does not change stock.
 - Step 27 (2026-11-25): Added pure integer invoice math, seller settings lookup, effective-order GST drafts, and the role-gated invoice preview. Files: invoice math/service, additive order route, new unit/integration tests, and this log. `npm test` passes (152; baseline 140), including 12 new tests. Decision: calculate and round tax per line, then sum tax components; no round-off line.
 - Step 26 (2026-11-25): Added transactional admin edits, stock-checked approvals with row locks, rejection/cancellation, audit notes, and strict routes. Files: order status helper, order service/routes, new admin/unit tests, and this log. `npm test` passes (140; baseline 131), including all 9 new tests. Decision: approval has no force option; partial quantities fit available stock, and invoiced/dispatched cancellation remains for the credit-note flow.
 - Step 25 (2026-11-25): Added pure shortage math, read-only order availability, reservation accounting for approved/invoiced undelivered quantities, and explicit stock reservation/free fields for stock readers. Files: availability/shortage services, order/stock routes, permissions, new tests, and this log. `npm test` passes (131; baseline 120); tests build benchmark FG stock at 238 through production APIs and verify partial-dispatch ledger/reservation changes. Decision: preserve the existing `availablePackets` value and exact SALESMAN response shape; the additive fields are included for non-SALESMAN stock readers.
@@ -85,13 +87,13 @@ Step 28 - Create GST invoice from an approved order
 ## File map (path - purpose)
 - Root: `AGENTS.md`, `package.json`, `.gitignore`, `docker-compose.yml` - project rules, scripts, ignores, and Postgres.
 - `docs/`: AI context, progress, step prompts, and Mermaid data model.
-- `backend/prisma/`: schema, migrations (including append-only trigger and stock adjustments), and idempotent benchmark seed.
+- `backend/prisma/`: schema, invoice snapshot/immutability migration, append-only ledger and stock-adjustment migrations, and idempotent benchmark seed.
 - `backend/scripts/`: guarded reset/reseed, balance output, staged benchmark checker, and API-only benchmark playback.
 - `backend/src/config/`, `middleware/`: role/capability matrix, auth, validation, and centralized error handling.
 - `backend/src/lib/`: Decimal money/GST/invoice/units/variance/BOM/pricing/order/shortage math, order transitions, IST date ranges, FY, states, errors, audit, and async helpers.
-- `backend/src/routes/`: health, auth, audit, stock/adjustments/finished availability, purchases, BOMs, production, catalog, order create/read/availability/admin changes/invoice preview, items, customers/prices, suppliers, settings, and users.
-- `backend/src/services/`: auth, append-only ledger, stock/availability, adjustment, purchase/costing/pricing/order create/read/admin changes/customer-sales, GST invoice drafts, BOM, production-run start/completion/variance/history/cancellation, master data, settings, and user logic.
-- `backend/tests/`: API/unit suites including benchmark, pricing, catalog, order create/read/availability/admin changes, GST previews/invoice math, order transitions/math, shortage math, and IST date coverage; `helpers/db.js` and setup guard test operations to `oda_test`.
+- `backend/src/routes/`: health, auth, audit, stock/adjustments/finished availability, purchases, BOMs, production, catalog, orders and invoice preview, immutable invoice create/read, items, customers/prices, suppliers, settings, and users.
+- `backend/src/services/`: auth, append-only ledger, stock/availability, adjustment, purchase/costing/pricing/order workflows, GST drafts and invoice create/read, BOM, production-run start/completion/variance/history/cancellation, master data, settings, and user logic.
+- `backend/tests/`: API/unit suites including benchmark, pricing, catalog, order workflows, GST previews/invoice math, invoice creation/immutability, order transitions/math, shortage math, and IST date coverage; `helpers/db.js` and setup guard test operations to `oda_test`.
 - `frontend/`: Vite/React UI, Tailwind, API client, and `/api` proxy.
 
 ## API endpoints (METHOD path - roles - purpose)
@@ -101,6 +103,7 @@ Step 28 - Create GST invoice from an approved order
 - `/api/purchases`: `POST /` PRODUCTION/ADMIN; `GET /?page=&limit=&from=&to=&supplierId=` and `GET /:id` PRODUCTION/ADMIN/ACCOUNTANT/OWNER. Receipts write ledger and audit atomically.
 - `/api/catalog`: `GET /order-items?customerId=` SALESMAN/ADMIN; salesmen can only access assigned customers. Returns priced active finished goods and current packet balances.
 - `/api/orders`: `POST /` SALESMAN creates SUBMITTED orders using server-resolved prices; `GET /?status=&customerId=&salesmanId=&from=&to=&q=&page=&limit=` and `GET /:id` SALESMAN/ADMIN/OWNER/ACCOUNTANT, with salesmen restricted to their own orders; `GET /my/customer-sales?from=&to=` SALESMAN-only; `GET /:id/availability` ADMIN/OWNER; `GET /:id/invoice-preview` ADMIN/ACCOUNTANT/OWNER; `PATCH /:id/lines`, `POST /:id/approve`, `POST /:id/reject`, and `POST /:id/cancel` ADMIN-only. Approval checks unreserved finished stock; preview calculates GST per line without writes.
+- `/api/invoices`: `POST /` ADMIN creates an immutable FY-numbered invoice from an APPROVED order; `GET /?status=&customerId=&from=&to=&q=&page=&limit=` and `GET /:id` ADMIN/ACCOUNTANT/OWNER. No invoice PUT, PATCH, or DELETE route.
 - `/api/items`: `GET /?type=&active=`, `GET /:id` authenticated; `POST /`, `PATCH /:id` ADMIN.
 - `/api/customers`: `GET /?type=&active=`, `GET /:id`, `GET /:id/prices` authenticated (salesmen assigned customers only); `POST /`, `PATCH /:id`, `PUT /:id/prices` ADMIN.
 - `/api/suppliers`: `GET /?active=`, `GET /:id` authenticated; `POST /`, `PATCH /:id` ADMIN. `/api/settings`: `GET /` authenticated; `PUT /:key` ADMIN.
@@ -113,6 +116,7 @@ Step 28 - Create GST invoice from an approved order
 ## Decisions (deviations from AI_CONTEXT.md and why)
 - DB host port is 5433 because the Windows PostgreSQL service occupies 5432
 - No round-off line; GST is computed per invoice line and then summed.
+- Invoice snapshots are stored in `Invoice.snapshot`; database triggers prevent invoice/line deletion and line updates. Invoice cancellation may change only status, cancelledAt, and cancelReason, and only once.
 - Authentication reloads the account and role for every request, so deactivation, deletion, and role changes take effect without waiting for token expiry.
 - Failed-login audits store the attempted email but never the password; unknown-email attempts have a null userId. Audit list `from`/`to` bounds are inclusive and `limit` is capped at 100.
 - Opening stock movements use their item id as `sourceId` because the model has no separate opening-document record.
@@ -143,7 +147,7 @@ Step 28 - Create GST invoice from an approved order
 
 ## Known issues / TODO
 - Order approval blocks on stock shortage with no force option; invoiced/dispatched cancellation remains unavailable until the credit-note flow.
-- Invoice preview is read-only; posted invoice creation, numbering, and immutability are Step 28.
+- Invoice cancellation and related credit-note workflow remain Step 31.
 - `npm install` reported 13 backend and 4 frontend dependency audit findings; review before deployment.
 - No refresh-token or logout endpoint yet; access tokens expire after 12 hours, and deactivated or deleted accounts are rejected on each request.
 - No Step 05-specific known issues.
@@ -162,7 +166,7 @@ Step 28 - Create GST invoice from an approved order
 - `bench:play` requires a fresh seed (100 kg flour and no production runs); rerunning it against a used benchmark database is intentionally refused.
 - The salesman catalog intentionally omits active finished goods with no positive customer-specific or default price.
 - Order retries are deduplicated only when the client supplies a valid `clientRef`.
-- Order detail currently has no invoice or dispatch summary entries until those later workflow steps create them.
+- Order detail includes invoice information after posting; dispatch summaries populate in Step 29.
 - Finished-stock availability retains its legacy `availablePackets` behavior; use the explicit `reservedPackets` and `freePackets` fields for those values in non-SALESMAN responses.
 
 ## Benchmark status (stage: PASS/FAIL/SKIPPED)

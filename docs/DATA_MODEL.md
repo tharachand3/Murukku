@@ -293,6 +293,7 @@ erDiagram
         string cancelReason
         int createdById FK
         datetime createdAt
+        json snapshot
     }
 
     InvoiceLine {
@@ -381,3 +382,4 @@ Audit logs capture who changed an entity and the recorded before-and-after value
 
 - Invoice lines snapshot their rate, HSN code, and GST rate so later master-data changes do not alter posted invoices.
 - Cancelling an invoice creates a credit note; invoices are never deleted.
+- The invoice snapshot stores seller, buyer, and originating order details as JSON. Database triggers prevent invoice and invoice-line deletion, prevent invoice-line updates, and restrict invoice updates to cancellation fields until cancelled.
