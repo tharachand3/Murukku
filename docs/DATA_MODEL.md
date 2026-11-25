@@ -363,6 +363,14 @@ erDiagram
     }
 ```
 
+## Production run cost allocation
+
+All overheads for a run are charged fully to that run; each run produces one finished product.
+Total run cost in paise = `materialCostPaise + overheadCostPaise`.
+Cost per good packet = total run cost / `actualGoodQty`, rounded half-up to four decimal places.
+Scrap and damaged packets carry cost but are excluded from the good-quantity divisor.
+Overhead entries do not create stock movements; deletions retain an audit record.
+
 Money is stored as integer paise to avoid floating-point rounding in financial values.
 List prices and customer-specific prices use the same integer-paise representation.
 Quantities are stored as integer base units such as grams, millilitres, pieces, or packets.

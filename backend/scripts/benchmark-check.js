@@ -5,6 +5,7 @@ import { getBalances } from '../src/services/ledgerService.js';
 import { getShortageSummary } from '../src/services/availabilityService.js';
 import { formatQty } from '../src/lib/units.js';
 import { computeRunVariance } from '../src/services/varianceService.js';
+import { formatPaiseDecimalAsRupees } from '../src/lib/costMath.js';
 
 const EXPECTED = {
   opening: {
@@ -297,6 +298,48 @@ checks.push(
         select: { materialCostPaise: true }
       });
       return run ? run.materialCostPaise : 'SKIPPED';
+    }
+  },
+  {
+    name: 'production run overhead cost = 180000 paise',
+    kind: 'document',
+    stage: 'final',
+    expected: 180000,
+    actualFn: async (db) => {
+      const run = await db.productionRun.findFirst({
+        where: { status: 'COMPLETED', actualGoodQty: 188 },
+        orderBy: [{ completedAt: 'desc' }, { id: 'desc' }],
+        select: {
+          overheadCostPaise: true,
+          overheads: { select: { id: true } }
+        }
+      });
+      if (!run || run.overheads.length === 0) {
+        return 'SKIPPED';
+      }
+      return run.overheadCostPaise ?? 0;
+    }
+  },
+  {
+    name: 'production cost per good packet rounds to Rs 31.14',
+    kind: 'document',
+    stage: 'final',
+    expected: 'Rs 31.14',
+    actualFn: async (db) => {
+      const run = await db.productionRun.findFirst({
+        where: { status: 'COMPLETED', actualGoodQty: 188 },
+        orderBy: [{ completedAt: 'desc' }, { id: 'desc' }],
+        select: {
+          costPerPacketPaise: true,
+          overheads: { select: { id: true } }
+        }
+      });
+      if (!run || run.overheads.length === 0) {
+        return 'SKIPPED';
+      }
+      return run.costPerPacketPaise === null
+        ? null
+        : formatPaiseDecimalAsRupees(run.costPerPacketPaise);
     }
   },
   {

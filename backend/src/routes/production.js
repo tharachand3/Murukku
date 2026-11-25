@@ -13,6 +13,13 @@ import {
   updateRun
 } from '../services/productionService.js';
 import { getRunVariance, listRunVariances } from '../services/varianceService.js';
+import {
+  addOverhead,
+  deleteOverhead,
+  getRunCostSnapshot,
+  listOverheads,
+  overheadInputSchema
+} from '../services/overheadService.js';
 
 const router = Router();
 const integerId = z.number().int().positive().max(2147483647);
@@ -31,6 +38,10 @@ const consumptionSchema = z.object({
 });
 const idParamsSchema = z.object({
   id: z.coerce.number().int().positive().max(2147483647)
+});
+const overheadParamsSchema = z.object({
+  id: z.coerce.number().int().positive().max(2147483647),
+  overheadId: z.coerce.number().int().positive().max(2147483647)
 });
 const startRunSchema = z.object({
   bomId: integerId.optional(),
@@ -95,6 +106,40 @@ const updateRunSchema = z.object({
 const cancelRunSchema = z.object({
   reason: z.string().trim().min(1)
 }).strict();
+
+router.post(
+  '/runs/:id/overheads',
+  authenticate,
+  requireCapability('production:write'),
+  validate({ params: idParamsSchema, body: overheadInputSchema }),
+  asyncHandler(async (req, res) => {
+    res.status(201).json(await addOverhead(req.user, req.params.id, req.body));
+  })
+);
+
+router.delete(
+  '/runs/:id/overheads/:overheadId',
+  authenticate,
+  requireCapability('production:write'),
+  validate({ params: overheadParamsSchema }),
+  asyncHandler(async (req, res) => {
+    res.json(await deleteOverhead(req.user, req.params.id, req.params.overheadId));
+  })
+);
+
+router.get(
+  '/runs/:id/overheads',
+  authenticate,
+  requireCapability('production:read'),
+  validate({ params: idParamsSchema }),
+  asyncHandler(async (req, res) => {
+    const [overheads, cost] = await Promise.all([
+      listOverheads(prisma, req.params.id),
+      getRunCostSnapshot(prisma, req.params.id)
+    ]);
+    res.json({ overheads, cost });
+  })
+);
 
 router.get(
   '/runs',

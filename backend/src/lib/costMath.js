@@ -78,3 +78,30 @@ export function formatRupees(decimalPaise, { minDecimals = 2, maxDecimals = 4 } 
 export function valueAt(ratePaisePerBase, qtyBase) {
   return mulRateQty(ratePaisePerBase, qtyBase);
 }
+
+export function computeRunCost({ materialCostPaise, overheadCostPaise, goodQty }) {
+  assertInteger(materialCostPaise, 'Material cost');
+  assertInteger(overheadCostPaise, 'Overhead cost');
+  const totalCostPaise = materialCostPaise + overheadCostPaise;
+  assertInteger(totalCostPaise, 'Total run cost');
+  if (goodQty === undefined || goodQty === null || goodQty === 0) {
+    return { totalCostPaise, costPerPacketPaise: null };
+  }
+  assertInteger(goodQty, 'Good quantity', { min: 1 });
+  return {
+    totalCostPaise,
+    costPerPacketPaise: new CostDecimal(totalCostPaise)
+      .div(goodQty)
+      .toDecimalPlaces(4, Decimal.ROUND_HALF_UP)
+  };
+}
+
+export function formatPaiseDecimalAsRupees(decimalPaise, places = 2) {
+  if (!Number.isSafeInteger(places) || places < 0 || places > 6) {
+    throw new RangeError('Decimal places must be an integer from 0 to 6');
+  }
+  return formatRupees(decimalPaise, {
+    minDecimals: places,
+    maxDecimals: places
+  });
+}

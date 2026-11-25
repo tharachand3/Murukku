@@ -228,6 +228,26 @@ steps.push(
   }
 );
 
+steps.push(async ({ token, run }) => {
+  const labour = await api(`/api/production/runs/${run.id}/overheads`, {
+    token,
+    method: 'POST',
+    body: { kind: 'LABOUR', amountPaise: 120000, note: 'Benchmark labour' }
+  });
+  assertEqual(labour.cost.overheadCostPaise, 120000, 'Labour overhead total');
+  const power = await api(`/api/production/runs/${run.id}/overheads`, {
+    token,
+    method: 'POST',
+    body: { kind: 'POWER_GAS', amountPaise: 60000, note: 'Benchmark gas and power' }
+  });
+  assertEqual(power.cost.overheadCostPaise, 180000, 'Total production overhead');
+  assertEqual(power.cost.totalCostPaise, 585500, 'Total run cost in paise');
+  assertEqual(power.cost.costPerPacketDisplay, 'Rs 31.14', 'Cost per good packet');
+  console.log(
+    `Step 8 PASS: materials ${power.cost.materialCostPaise}; overheads ${power.cost.overheadCostPaise}; total ${power.cost.totalCostPaise}; cost per packet ${power.cost.costPerPacketDisplay}`
+  );
+});
+
 function readUpto(args) {
   const option = args.find((argument) => argument.startsWith('--upto='));
   if (!option) {
@@ -288,7 +308,7 @@ async function main() {
       context = { ...context, ...result };
     }
     console.log('Benchmark playback complete.');
-    const checkerStage = upto >= 7 ? 'final' : upto >= 5 ? 'after-dispatch' : 'after-run';
+    const checkerStage = upto >= 8 ? 'final' : upto >= 5 ? 'after-dispatch' : 'after-run';
     console.log(`Now run: npm run bench:check -- --stage=${checkerStage}`);
   } catch (error) {
     console.error(error.message);

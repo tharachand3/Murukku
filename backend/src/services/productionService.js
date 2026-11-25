@@ -8,6 +8,7 @@ import { prisma } from '../lib/prisma.js';
 import { addMovement } from './ledgerService.js';
 import { nextNumber } from './numberingService.js';
 import { getAverageRate } from './costingService.js';
+import { listOverheads, recalcRunCost } from './overheadService.js';
 import { applyRunVariance, computeRunVariance } from './varianceService.js';
 
 const INTEGER_MAX = 2147483647;
@@ -486,6 +487,7 @@ export async function completeRun(userId, runId, input) {
       },
     });
     await applyRunVariance(tx, before.id);
+    await recalcRunCost(tx, before.id);
     const after = await tx.productionRun.findUnique({
       where: { id: before.id },
       include: runInclude
@@ -597,7 +599,7 @@ export async function getRunDetails(db, runId) {
     throw notFound('Production run not found');
   }
 
-  const [ledgerRows, auditHistory] = await Promise.all([
+  const [ledgerRows, auditHistory, overheads] = await Promise.all([
     db.stockMovement.findMany({
       where: { sourceType: 'PRODUCTION_RUN', sourceId: run.id },
       orderBy: [{ movementDate: 'asc' }, { id: 'asc' }],
@@ -617,7 +619,8 @@ export async function getRunDetails(db, runId) {
       where: { entity: 'ProductionRun', entityId: run.id },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       include: { user: { select: { id: true, name: true } } }
-    })
+    }),
+    listOverheads(db, run.id)
   ]);
   const variance = run.status === 'COMPLETED'
     ? computeRunVariance(run, run.lines)
@@ -639,7 +642,7 @@ export async function getRunDetails(db, runId) {
           : null
       };
     }),
-    overheads: [],
+    overheads: overheads.rows,
     ledgerRows: ledgerRows.map((movement) => ({
       ...movement,
       itemName: movement.item.name,
