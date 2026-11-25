@@ -2,7 +2,7 @@
 Last updated: 2026-11-25 by Copilot
 
 ## Next Step
-Step 21 - Benchmark steps 1-3
+Step 21 - Automated benchmark test: steps 1 to 3
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install`; start/stop PostgreSQL on port 5433 with `npm run db:up` / `npm run db:down`.

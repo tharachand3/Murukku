@@ -822,5 +822,10 @@ describe('production run list, detail and cancellation', () => {
       before: { notes: null, batchNo: null },
       after: { notes: 'Shift A', batchNo: 'BATCH-20' }
     });
+    expect(detail.body.lines.find((line) => line.itemId === items.flour.id).variance).toEqual({
+      bp: -10000,
+      pct: '-100.00',
+      flagged: true
+    });
   });
 });
