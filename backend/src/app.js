@@ -22,6 +22,7 @@ import productionRouter from './routes/production.js';
 import catalogRouter from './routes/catalog.js';
 import ordersRouter from './routes/orders.js';
 import invoicesRouter from './routes/invoices.js';
+import dispatchesRouter from './routes/dispatches.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -50,6 +51,7 @@ app.use('/api/production', productionRouter);
 app.use('/api/catalog', catalogRouter);
 app.use('/api/orders', ordersRouter);
 app.use('/api/invoices', invoicesRouter);
+app.use('/api/dispatches', dispatchesRouter);
 
 if (process.env.NODE_ENV === 'test') {
   app.get('/api/_whoami', authenticate, (req, res) => {

@@ -2,7 +2,7 @@
 Last updated: 2026-11-25 by Copilot
 
 ## Next Step
-Step 29 - Dispatch invoiced goods
+Step 30 - Payments
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install`; start/stop PostgreSQL on port 5433 with `npm run db:up` / `npm run db:down`.
@@ -16,6 +16,7 @@ Step 29 - Dispatch invoiced goods
 - Admin order changes require `orders:approve`: `PATCH /api/orders/:id/lines`, `POST /api/orders/:id/approve`, `POST /api/orders/:id/reject`, and `POST /api/orders/:id/cancel`. Approval freezes effective quantities/prices and requires enough unreserved stock; partial approval is allowed, and manual cancellation is limited to SUBMITTED/APPROVED.
 - Preview GST with `GET /api/orders/:id/invoice-preview` (ADMIN/ACCOUNTANT/OWNER); only SUBMITTED/APPROVED orders are previewable. Tax is rounded per line and summed; preview does not create invoices or consume numbers.
 - Create an invoice from an APPROVED order with `POST /api/invoices` (ADMIN); read/filter invoices with `GET /api/invoices` and `GET /api/invoices/:id` (ADMIN/ACCOUNTANT/OWNER). Posted invoices snapshot seller/buyer/order and line tax data; the database blocks invoice deletes, line edits, and changes to posted invoice fields.
+- Dispatch an invoice with `POST /api/dispatches` (ADMIN), optionally providing partial `lines`; omitted lines dispatch all remaining quantities. Read dispatches with `GET /api/dispatches` and `GET /api/dispatches/:id` (ADMIN/ACCOUNTANT/OWNER), and check invoice quantities with `GET /api/invoices/:id/dispatch-status`.
 - Stock readers can use `GET /api/stock/finished-availability` for reservation/free totals; non-salesman responses include `reservedPackets` and `freePackets`, while salesman response fields stay backward-compatible.
 - Start API/UI in separate terminals: `npm run dev:backend` and `npm run dev:frontend`.
 - Prisma commands from `backend/`: `npx prisma format`, `npx prisma validate`, `npx prisma migrate dev`, `npx prisma migrate status`.
@@ -44,7 +45,7 @@ Step 29 - Dispatch invoiced goods
 15-16 [x]: BOM CRUD/versioning/cloning; planned-consumption calculator.
 17-21 [x] production start/issues, completion/output/scrap, variance/tolerance, run history/edit/cancel, API benchmark steps 1-3.
 ### Phase 4 - Sales loop
-22 [x] customer/default price resolution and salesman catalog; 23 [x] order creation with idempotent clientRef; 24 [x] role-scoped order lists/details, status timeline, and salesman customer sales; 25 [x] finished-goods availability, reservations, and shortage checks; 26 [x] admin order edit/approve/reject/cancel; 27 [x] per-line GST calculator and order invoice preview; 28 [x] immutable GST invoices; 29-33 [ ] dispatch; payments; credit notes; shortage flow; benchmark steps 4-7.
+22 [x] customer/default price resolution and salesman catalog; 23 [x] order creation with idempotent clientRef; 24 [x] role-scoped order lists/details, status timeline, and salesman customer sales; 25 [x] finished-goods availability, reservations, and shortage checks; 26 [x] admin order edit/approve/reject/cancel; 27 [x] per-line GST calculator and order invoice preview; 28 [x] immutable GST invoices; 29 [x] dispatch; 30-33 [ ] payments; credit notes; shortage flow; benchmark steps 4-7.
 ### Phase 5 - Costing
 34-36 [ ] weighted average; overhead allocation; packet cost/margin.
 ### Phase 6 - Reports and PDF
@@ -55,6 +56,7 @@ Step 29 - Dispatch invoiced goods
 57-60 [ ] full benchmark/fixes; deployment; README/design note; demo/interview/final audit.
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
+- Step 29 (2026-11-25): Added transactional full/partial dispatch, invoice and item locks, reservation guard, ledger movements, audit/order status updates, dispatch reads, and invoice dispatch status. Files: dispatch service/route, invoice route, app/permissions, new dispatch tests, and this log. `npm test` passes (169; baseline 161), including 8 new tests. Decisions: dispatch is the sales stock-out point; DISPATCH ledger rows carry no rate; an order becomes DISPATCHED only when its invoice is fully dispatched.
 - Step 28 (2026-11-25): Added transactional invoice creation from approved orders, FY numbering, seller/buyer/order and line snapshots, immutable DB triggers, filtered list/detail APIs, and order timeline audit. Files: schema/migration, invoice service/route, app mount, new invoice tests, data model, and this log. `npm test` passes (161; baseline 152), including 9 new tests; migration deployed to `oda_test`. Decision: invoice and invoice-line records are immutable except one invoice cancellation update; invoice creation does not change stock.
 - Step 27 (2026-11-25): Added pure integer invoice math, seller settings lookup, effective-order GST drafts, and the role-gated invoice preview. Files: invoice math/service, additive order route, new unit/integration tests, and this log. `npm test` passes (152; baseline 140), including 12 new tests. Decision: calculate and round tax per line, then sum tax components; no round-off line.
 - Step 26 (2026-11-25): Added transactional admin edits, stock-checked approvals with row locks, rejection/cancellation, audit notes, and strict routes. Files: order status helper, order service/routes, new admin/unit tests, and this log. `npm test` passes (140; baseline 131), including all 9 new tests. Decision: approval has no force option; partial quantities fit available stock, and invoiced/dispatched cancellation remains for the credit-note flow.
@@ -91,9 +93,9 @@ Step 29 - Dispatch invoiced goods
 - `backend/scripts/`: guarded reset/reseed, balance output, staged benchmark checker, and API-only benchmark playback.
 - `backend/src/config/`, `middleware/`: role/capability matrix, auth, validation, and centralized error handling.
 - `backend/src/lib/`: Decimal money/GST/invoice/units/variance/BOM/pricing/order/shortage math, order transitions, IST date ranges, FY, states, errors, audit, and async helpers.
-- `backend/src/routes/`: health, auth, audit, stock/adjustments/finished availability, purchases, BOMs, production, catalog, orders and invoice preview, immutable invoice create/read, items, customers/prices, suppliers, settings, and users.
-- `backend/src/services/`: auth, append-only ledger, stock/availability, adjustment, purchase/costing/pricing/order workflows, GST drafts and invoice create/read, BOM, production-run start/completion/variance/history/cancellation, master data, settings, and user logic.
-- `backend/tests/`: API/unit suites including benchmark, pricing, catalog, order workflows, GST previews/invoice math, invoice creation/immutability, order transitions/math, shortage math, and IST date coverage; `helpers/db.js` and setup guard test operations to `oda_test`.
+- `backend/src/routes/`: health, auth, audit, stock/adjustments/finished availability, purchases, BOMs, production, catalog, orders and invoice preview, immutable invoice create/read and dispatch status, dispatches, items, customers/prices, suppliers, settings, and users.
+- `backend/src/services/`: auth, append-only ledger, stock/availability, adjustment, purchase/costing/pricing/order workflows, GST drafts, invoice and dispatch workflows, BOM, production-run start/completion/variance/history/cancellation, master data, settings, and user logic.
+- `backend/tests/`: API/unit suites including benchmark, pricing, catalog, order workflows, GST previews/invoice math, invoice creation/immutability, dispatch, order transitions/math, shortage math, and IST date coverage; `helpers/db.js` and setup guard test operations to `oda_test`.
 - `frontend/`: Vite/React UI, Tailwind, API client, and `/api` proxy.
 
 ## API endpoints (METHOD path - roles - purpose)
@@ -103,7 +105,8 @@ Step 29 - Dispatch invoiced goods
 - `/api/purchases`: `POST /` PRODUCTION/ADMIN; `GET /?page=&limit=&from=&to=&supplierId=` and `GET /:id` PRODUCTION/ADMIN/ACCOUNTANT/OWNER. Receipts write ledger and audit atomically.
 - `/api/catalog`: `GET /order-items?customerId=` SALESMAN/ADMIN; salesmen can only access assigned customers. Returns priced active finished goods and current packet balances.
 - `/api/orders`: `POST /` SALESMAN creates SUBMITTED orders using server-resolved prices; `GET /?status=&customerId=&salesmanId=&from=&to=&q=&page=&limit=` and `GET /:id` SALESMAN/ADMIN/OWNER/ACCOUNTANT, with salesmen restricted to their own orders; `GET /my/customer-sales?from=&to=` SALESMAN-only; `GET /:id/availability` ADMIN/OWNER; `GET /:id/invoice-preview` ADMIN/ACCOUNTANT/OWNER; `PATCH /:id/lines`, `POST /:id/approve`, `POST /:id/reject`, and `POST /:id/cancel` ADMIN-only. Approval checks unreserved finished stock; preview calculates GST per line without writes.
-- `/api/invoices`: `POST /` ADMIN creates an immutable FY-numbered invoice from an APPROVED order; `GET /?status=&customerId=&from=&to=&q=&page=&limit=` and `GET /:id` ADMIN/ACCOUNTANT/OWNER. No invoice PUT, PATCH, or DELETE route.
+- `/api/invoices`: `POST /` ADMIN creates an immutable FY-numbered invoice from an APPROVED order; `GET /?status=&customerId=&from=&to=&q=&page=&limit=` and `GET /:id` ADMIN/ACCOUNTANT/OWNER; `GET /:id/dispatch-status` returns invoiced, dispatched, and remaining quantities.
+- `/api/dispatches`: `POST /` ADMIN creates a full or partial dispatch; `GET /?invoiceId=&customerId=&from=&to=&page=&limit=` and `GET /:id` ADMIN/ACCOUNTANT/OWNER. Dispatch writes negative DISPATCH ledger movements; orders transition to DISPATCHED only when all invoice quantities are sent.
 - `/api/items`: `GET /?type=&active=`, `GET /:id` authenticated; `POST /`, `PATCH /:id` ADMIN.
 - `/api/customers`: `GET /?type=&active=`, `GET /:id`, `GET /:id/prices` authenticated (salesmen assigned customers only); `POST /`, `PATCH /:id`, `PUT /:id/prices` ADMIN.
 - `/api/suppliers`: `GET /?active=`, `GET /:id` authenticated; `POST /`, `PATCH /:id` ADMIN. `/api/settings`: `GET /` authenticated; `PUT /:key` ADMIN.
@@ -134,6 +137,9 @@ Step 29 - Dispatch invoiced goods
 - `availablePackets` retains the established reservation-adjusted value; new `reservedPackets`/`freePackets` fields are limited to non-SALESMAN finished-stock responses to preserve the existing exact SALESMAN payload.
 - Order approval blocks on shortage with no force flag; admins can approve a smaller quantity. Manual cancellation is only for SUBMITTED/APPROVED orders; INVOICED/DISPATCHED cancellation belongs to the credit-note flow.
 - Invoice GST is calculated and rounded per line before tax components are summed; no round-off line is added.
+- Finished-goods stock is reduced for sales only at dispatch through `ledgerService.addMovement`; DISPATCH ledger rows have no rate because production cost is stored on the run.
+- Dispatch locks invoice and item rows and checks free stock after reservations for other approved/invoiced orders; invoice quantities are never modified.
+- An order becomes DISPATCHED only after every line on its invoice has been dispatched; partial dispatch keeps it INVOICED.
 
 ## Assumptions (copy into README at the end)
 - Project source and project guidance live at the Git repository root.
@@ -166,7 +172,7 @@ Step 29 - Dispatch invoiced goods
 - `bench:play` requires a fresh seed (100 kg flour and no production runs); rerunning it against a used benchmark database is intentionally refused.
 - The salesman catalog intentionally omits active finished goods with no positive customer-specific or default price.
 - Order retries are deduplicated only when the client supplies a valid `clientRef`.
-- Order detail includes invoice information after posting; dispatch summaries populate in Step 29.
+- No Step 29-specific dispatch issues are known.
 - Finished-stock availability retains its legacy `availablePackets` behavior; use the explicit `reservedPackets` and `freePackets` fields for those values in non-SALESMAN responses.
 
 ## Benchmark status (stage: PASS/FAIL/SKIPPED)

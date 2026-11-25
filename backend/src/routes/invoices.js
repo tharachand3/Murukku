@@ -10,6 +10,7 @@ import {
   getInvoiceDetails,
   listInvoices
 } from '../services/invoiceService.js';
+import { getInvoiceDispatchStatus } from '../services/dispatchService.js';
 
 const router = Router();
 const dateSchema = z.string().refine(
@@ -57,6 +58,16 @@ router.get(
   validate({ query: listQuerySchema }),
   asyncHandler(async (req, res) => {
     res.json(await listInvoices(prisma, req.query));
+  })
+);
+
+router.get(
+  '/:id/dispatch-status',
+  authenticate,
+  requireCapability('invoices:read'),
+  validate({ params: idParamsSchema }),
+  asyncHandler(async (req, res) => {
+    res.json(await getInvoiceDispatchStatus(prisma, req.params.id));
   })
 );
 
