@@ -36,7 +36,7 @@ export async function resetDb() {
         .join(', ');
       await tx.$executeRawUnsafe(`TRUNCATE TABLE ${targets} RESTART IDENTITY CASCADE`);
     }
-  });
+  }, { timeout: 60000, maxWait: 60000 });
 }
 
 export async function seedMinimal() {

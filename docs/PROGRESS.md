@@ -123,6 +123,7 @@ Step 18 - Production run: completion, output and scrap
 - Production runs can be started and raw materials issued; completion/output/scrap, variance, and run history/cancellation remain Steps 18-20.
 - Planned batch counts are capped at 100; fractional ingredient results are rounded to integer base units as required for stock quantities.
 - Explicit `bomId` can start a run from that BOM version; `finishedItemId` resolves the active BOM.
+- Test DB reset timeout raised for slow Windows/Docker.
 
 ## Benchmark status (stage: PASS/FAIL/SKIPPED)
 opening PASS (6 checks; later-stage checks skipped)
