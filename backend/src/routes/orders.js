@@ -19,6 +19,7 @@ import {
   editOrder,
   rejectOrder
 } from '../services/orderService.js';
+import { buildOrderInvoiceDraft } from '../services/gstService.js';
 
 const router = Router();
 const dateSchema = z.string().refine(
@@ -137,6 +138,16 @@ router.get(
   validate({ params: idParamsSchema }),
   asyncHandler(async (req, res) => {
     res.json(await checkOrderAvailability(prisma, req.params.id));
+  })
+);
+
+router.get(
+  '/:id/invoice-preview',
+  authenticate,
+  requireCapability('invoices:read'),
+  validate({ params: idParamsSchema }),
+  asyncHandler(async (req, res) => {
+    res.json(await buildOrderInvoiceDraft(prisma, req.params.id));
   })
 );
 
