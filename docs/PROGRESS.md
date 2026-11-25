@@ -1,8 +1,8 @@
 # PROGRESS.md - live project memory (UPDATE AFTER EVERY STEP)
-Last updated: 2026-11-24 by Copilot
+Last updated: 2026-11-25 by Copilot
 
 ## Next Step
-Step 17 - Production run: start and issue materials
+Step 18 - Production run: completion, output and scrap
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install`; start/stop PostgreSQL on port 5433 with `npm run db:up` / `npm run db:down`.
@@ -11,12 +11,13 @@ Step 17 - Production run: start and issue materials
 - Start API/UI in separate terminals: `npm run dev:backend` and `npm run dev:frontend`.
 - Prisma commands from `backend/`: `npx prisma format`, `npx prisma validate`, `npx prisma migrate dev`, `npx prisma migrate status`.
 - Seed with `npm run seed`; reset/reseed (destructive; production is refused) with `npm run seed:reset`; print ledger balances with `npm run balances`.
-- Run benchmarks after reset: `npm run bench:check -- --stage=opening`; available stages: `after-purchase`, `after-run`, `after-dispatch`, `final`.
+- Run benchmarks after reset: `npm run bench:check -- --stage=opening`; available stages: `after-purchase`, `after-issue`, `after-run`, `after-dispatch`, `final`.
 - Purchase receipts use PRODUCTION/ADMIN and decimal-string qty/rates; check with `npm run bench:check -- --stage=after-purchase`. Adjustments use ADMIN/PRODUCTION with positive qty and IN/OUT direction.
 - Numbering tests: `npm test -- tests/lib/fy.test.js tests/numberingService.test.js`. Call `nextNumber(tx, 'INV', date)` inside the document transaction to avoid burning numbers on rollback.
 - Demo password is `Demo@123` for `admin@demo.com`, `production@demo.com`, `salesman.a@demo.com`, `salesman.b@demo.com`, `accountant@demo.com`, and `owner@demo.com`. Login at `POST /api/auth/login` and use the token as `Authorization: Bearer <token>`.
 - Master data reads require authentication; writes are ADMIN-only. SALESMAN customer reads are assignment-scoped. BOM reads allow ADMIN/PRODUCTION/ACCOUNTANT/OWNER; writes allow ADMIN/PRODUCTION.
 - BOM planning: `GET /api/boms/:id/plan` with exactly one mode, `?batches=2.5`, `?targetOutput=300`, or `?itemId=1&qty=20&unit=kg`; max 100 batches.
+- Start a run with `POST /api/production/runs` (PRODUCTION/ADMIN), providing exactly one of `bomId` or `finishedItemId`; the latter selects the active BOM. Optional `issues` use decimal-string quantities and units.
 - `GET /api/audit` requires ADMIN/ACCOUNTANT/OWNER; supports entity/user/date filters and pagination (limit max 100).
 - Check `src/lib` for `parseFloat`/`toFixed` with `rg -n "parseFloat|toFixed" src/lib` (expect no matches).
 - Append-only trigger check: `docker compose exec -it db psql -U oda -d oda`, then `UPDATE "StockMovement" SET "qtyChange" = 1;` (must fail).
@@ -29,7 +30,7 @@ Step 17 - Production run: start and issue materials
 09-14 [x]: ledger service; stock APIs/benchmark checker; FY numbering; purchases; adjustments; master-data APIs.
 ### Phase 3 - BOM and production (highest weight)
 15-16 [x]: BOM CRUD/versioning/cloning; planned-consumption calculator.
-17 [ ] production start/issues; 18 [ ] completion/output/scrap; 19 [ ] variance/tolerance; 20 [ ] run list/detail/cancel; 21 [ ] benchmark steps 1-3.
+17 [x] production start/issues; 18 [ ] completion/output/scrap; 19 [ ] variance/tolerance; 20 [ ] run list/detail/cancel; 21 [ ] benchmark steps 1-3.
 ### Phase 4 - Sales loop
 22-33 [ ] price resolution; orders; order roles/status; availability; approval; GST; invoicing; dispatch; payments; credit notes; shortage flow; benchmark steps 4-7.
 ### Phase 5 - Costing
@@ -42,6 +43,7 @@ Step 17 - Production run: start and issue materials
 57-60 [ ] full benchmark/fixes; deployment; README/design note; demo/interview/final audit.
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
+- Step 17 (2026-11-25): Added atomic run creation, plan snapshots, raw-material ledger issues, average-rate material costs, audit, and `POST /api/production/runs`; added five API cases and the after-issue benchmark. Files: production service/route, app mount, production tests, benchmark checker, and this log. `npm test` passes (89); reset + purchase + run + after-issue benchmark passes (10 checks). Decision: `issuedQty` is total stock-out (consumed plus scrap); defer packaging to completion by default.
 - Step 16 (2026-11-24): Added pure Decimal-based batch, target-output, and issued-material BOM planning with half-up integer base quantities, plus a role-gated plan endpoint for all three exclusive query modes. Pure and API tests pass; full `npm test` passes (84). Assumption: plan responses serialize batchCount as a decimal string to preserve precision.
 - Step 15 (2026-11-24): Added role-gated BOM list/detail/create/update/clone APIs, unit-to-base conversion, single-active versioning, and audit writes; used BOM edits create a new version. Added coverage for seeded recipe display, invalid types, history, cloning, and role denial. `npm test` passes (78); live production login showed the expected 200-yield recipe quantities.
 - Step 14 (2026-11-24): Added audited master-data CRUD and role policies; key files `masterDataService.js`, `settingsService.js`, `userService.js`, master-data routes, and `tests/masterData.test.js`.
@@ -66,8 +68,8 @@ Step 17 - Production run: start and issue materials
 - `backend/scripts/`: guarded reset/reseed, balance output, and staged benchmark checker.
 - `backend/src/config/`, `middleware/`: role/capability matrix, auth, validation, and centralized error handling.
 - `backend/src/lib/`: Decimal money/GST/units/variance/BOM math, FY, states, errors, audit, and async helpers.
-- `backend/src/routes/`: health, auth, audit, stock/adjustments, purchases, BOMs, items, customers/prices, suppliers, settings, and users.
-- `backend/src/services/`: auth, append-only ledger, stock availability, adjustment, purchase/costing, BOM, master data, settings, and user logic.
+- `backend/src/routes/`: health, auth, audit, stock/adjustments, purchases, BOMs, production, items, customers/prices, suppliers, settings, and users.
+- `backend/src/services/`: auth, append-only ledger, stock availability, adjustment, purchase/costing, BOM, production-run start, master data, settings, and user logic.
 - `backend/tests/`: API/unit suites; `helpers/db.js` and setup guard test operations to `oda_test`.
 - `frontend/`: Vite/React UI, Tailwind, API client, and `/api` proxy.
 
@@ -81,6 +83,7 @@ Step 17 - Production run: start and issue materials
 - `/api/suppliers`: `GET /?active=`, `GET /:id` authenticated; `POST /`, `PATCH /:id` ADMIN. `/api/settings`: `GET /` authenticated; `PUT /:key` ADMIN.
 - `/api/users`: `GET /`, `POST /`, `PATCH /:id`, `POST /:id/reset-password` ADMIN; responses omit password hashes.
 - `/api/boms`: `GET /?finishedItemId=&active=`, `GET /:id`, `GET /:id/plan` ADMIN/PRODUCTION/ACCOUNTANT/OWNER; `POST /`, `PUT /:id`, `POST /:id/clone` ADMIN/PRODUCTION. Plan accepts exactly one of `?batches=`, `?targetOutput=`, or `?itemId=&qty=&unit=`.
+- `/api/production`: `POST /runs` PRODUCTION/ADMIN; starts a numbered run, snapshots every BOM line, issues requested (or default raw) materials through the stock ledger, and records the material-cost snapshot and audit event.
 - Test-only: `GET /api/_whoami`, `/api/_admin-only`, `/api/_approve-only`.
 - Stock availability subtracts outstanding approved/invoiced reservations; purchase cost averages use Decimal rates; adjustment quantities are positive magnitudes with IN/OUT direction, and adjustment history uses `createdAt`.
 
@@ -93,6 +96,7 @@ Step 17 - Production run: start and issue materials
 - Financial-year ranges use an inclusive IST-midnight start and exclusive next-year IST-midnight end.
 - BOM cloning supports pack-size variants in one call: retain raw-material lines and replace packaging items for a new finished SKU; the source BOM remains unchanged.
 - Planned consumption rounds fractional batch counts to four decimals and each resulting output/material quantity to the nearest integer using half-up rounding.
+- A run line's `issuedQty` records total quantity leaving stock for the run (consumed plus scrap); step 17 starts raw-material issues, while packaging can be issued at completion.
 
 ## Assumptions (copy into README at the end)
 - Project source and project guidance live at the Git repository root.
@@ -111,13 +115,16 @@ Step 17 - Production run: start and issue materials
 - Prisma 6 warns that the requested `package.json#prisma` seed configuration is deprecated in Prisma 7.
 - The append-only trigger blocks row UPDATE/DELETE; explicit reset helpers use TRUNCATE only on a dedicated/reset database. Tests require the migrated `oda_test` database.
 - Benchmark stock snapshots are checked at the selected stage; later stages and not-yet-reached document checks print SKIPPED.
-- Numbering is gap-free only when `nextNumber` receives the transaction client and shares the document write's transaction; document routes are not implemented yet.
+- Document counters roll back with failed writes when `nextNumber` receives the transaction client; each document service must preserve that transaction boundary.
 - Purchases currently support create and read only; edit, cancellation, and purchase-return workflows are not implemented.
 - Adjustments have no editable effective date; history filtering uses the recorded `createdAt`, and corrections always append rather than update or delete.
 - Master data has no hard-delete endpoints; item deactivation is rejected while ledger balance is nonzero.
 - BOMs have no delete endpoint; production-run history stays attached to its original recipe version.
+- Production runs can be started and raw materials issued; completion/output/scrap, variance, and run history/cancellation remain Steps 18-20.
 - Planned batch counts are capped at 100; fractional ingredient results are rounded to integer base units as required for stock quantities.
+- Explicit `bomId` can start a run from that BOM version; `finishedItemId` resolves the active BOM.
 
 ## Benchmark status (stage: PASS/FAIL/SKIPPED)
 opening PASS (6 checks; later-stage checks skipped)
 after-purchase PASS (4 checks; later-stage checks skipped)
+after-issue PASS (10 checks; later-stage checks skipped)

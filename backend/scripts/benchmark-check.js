@@ -29,6 +29,17 @@ const EXPECTED = {
       paisePerBase: '4.3125'
     }
   },
+  'after-issue': {
+    stock: {
+      FLOUR: '120 kg',
+      OIL: '19.5 l',
+      SPICE: '3.8 kg',
+      POUCH200: '500 pcs',
+      CARTON: '30 pcs',
+      MURUKKU200: '50 packet'
+    },
+    documents: { issuedProductionRuns: 1 }
+  },
   'after-run': {
     stock: {
       FLOUR: '120 kg',
@@ -56,6 +67,9 @@ const EXPECTED = {
 const STAGES = Object.keys(EXPECTED);
 const DOCUMENT_READERS = {
   purchases: (db) => db.purchase.count(),
+  issuedProductionRuns: (db) => db.productionRun.count({
+    where: { status: 'ISSUED' }
+  }),
   completedProductionRuns: (db) => db.productionRun.count({
     where: { status: 'COMPLETED' }
   }),
