@@ -391,3 +391,14 @@ Audit logs capture who changed an entity and the recorded before-and-after value
 - Invoice lines snapshot their rate, HSN code, and GST rate so later master-data changes do not alter posted invoices.
 - Cancelling an invoice creates a credit note; invoices are never deleted.
 - The invoice snapshot stores seller, buyer, and originating order details as JSON. Database triggers prevent invoice and invoice-line deletion, prevent invoice-line updates, and restrict invoice updates to cancellation fields until cancelled.
+
+## Reports
+- Reports are registered definitions with a unique lowercase kebab-case key, metadata, filters, and a `run` function.
+- Each definition declares a permission capability; the catalog only lists reports the authenticated role may run.
+- Report filters use strict Zod object schemas and document their names, types, descriptions, and required status.
+- Period filters are inclusive IST calendar dates, converted to UTC start and exclusive end instants.
+- The default period starts on April 1 of the current financial year and ends today in IST.
+- Generic report sections declare typed columns and rows whose keys match those columns exactly.
+- Money cells are integer paise; decimal quantities and rates are strings; percentages are integer basis points.
+- Paginated reports return section-level page metadata while preserving totals for the complete filtered set.
+- The sales register groups invoice sums by status so posted sales and cancelled credit-note values remain distinct.
