@@ -8,13 +8,18 @@ import { prisma } from '../lib/prisma.js';
 import { addMovement } from './ledgerService.js';
 import { nextNumber } from './numberingService.js';
 import { getAverageRate } from './costingService.js';
-import { applyRunVariance } from './varianceService.js';
+import { applyRunVariance, computeRunVariance } from './varianceService.js';
 
 const INTEGER_MAX = 2147483647;
 
 const runInclude = {
   finishedItem: {
-    select: { id: true, code: true, name: true }
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      displayUnit: { select: { code: true } }
+    }
   },
   lines: {
     include: {
@@ -151,7 +156,9 @@ function presentRun(run) {
       plannedQtyBase: line.plannedQty,
       plannedQtyDisplay: formatQty(line.plannedQty, line.item.displayUnit.code),
       issuedQtyBase: line.issuedQty,
-      issuedQtyDisplay: formatQty(line.issuedQty, line.item.displayUnit.code)
+      issuedQtyDisplay: formatQty(line.issuedQty, line.item.displayUnit.code),
+      scrapQtyBase: line.scrapQty,
+      scrapQtyDisplay: formatQty(line.scrapQty, line.item.displayUnit.code)
     })),
     runningMaterialCostPaise: materialCostPaise,
     runningMaterialCostDisplay: paiseToRupeesString(materialCostPaise)
@@ -490,6 +497,289 @@ export async function completeRun(userId, runId, input) {
       entityId: before.id,
       before,
       after
+    });
+    return {
+      ...presentRun(after),
+      ledgerRows
+    };
+  }, { maxWait: 10000, timeout: 30000 });
+}
+
+function assertRunListInput({ status, from, to, finishedItemId, page, limit }) {
+  if (status !== undefined && !['ISSUED', 'COMPLETED', 'CANCELLED'].includes(status)) {
+    throw badRequest('status is invalid');
+  }
+  for (const [value, name] of [[from, 'from'], [to, 'to']]) {
+    if (value !== undefined && (!(value instanceof Date) || Number.isNaN(value.getTime()))) {
+      throw badRequest(`${name} must be a valid Date`);
+    }
+  }
+  if (from && to && from > to) {
+    throw badRequest('from must be earlier than or equal to to');
+  }
+  if (finishedItemId !== undefined) {
+    assertPositiveInt(finishedItemId, 'finishedItemId');
+  }
+  if (!Number.isSafeInteger(page) || page <= 0) {
+    throw badRequest('page must be a positive integer');
+  }
+  if (!Number.isSafeInteger(limit) || limit <= 0 || limit > 100) {
+    throw badRequest('limit must be an integer from 1 to 100');
+  }
+}
+
+function presentRunListItem(run) {
+  const variance = run.status === 'COMPLETED'
+    ? computeRunVariance(run, run.lines)
+    : null;
+  const flagsCount = variance
+    ? Number(variance.yield.flagged) + variance.lines.filter((line) => line.flagged).length
+    : 0;
+  const materialCostPaise = run.materialCostPaise ?? 0;
+  const displayUnit = run.finishedItem.displayUnit.code;
+
+  return {
+    id: run.id,
+    runNo: run.runNo,
+    product: run.finishedItem,
+    status: run.status,
+    startedAt: run.startedAt,
+    completedAt: run.completedAt,
+    plannedOutputQtyBase: run.plannedOutputQty,
+    plannedOutputQtyDisplay: formatQty(run.plannedOutputQty, displayUnit),
+    actualGoodQtyBase: run.actualGoodQty,
+    actualGoodQtyDisplay: run.actualGoodQty === null
+      ? null
+      : formatQty(run.actualGoodQty, displayUnit),
+    flagsCount,
+    materialCostPaise,
+    materialCostDisplay: paiseToRupeesString(materialCostPaise)
+  };
+}
+
+export async function listRuns(db, input) {
+  assertRunListInput(input);
+  const startedAt = {};
+  if (input.from) startedAt.gte = input.from;
+  if (input.to) startedAt.lte = input.to;
+  const where = {
+    ...(input.status !== undefined ? { status: input.status } : {}),
+    ...(input.finishedItemId !== undefined
+      ? { finishedItemId: input.finishedItemId }
+      : {}),
+    ...(Object.keys(startedAt).length > 0 ? { startedAt } : {})
+  };
+  const [runs, total] = await Promise.all([
+    db.productionRun.findMany({
+      where,
+      orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+      skip: (input.page - 1) * input.limit,
+      take: input.limit,
+      include: runInclude
+    }),
+    db.productionRun.count({ where })
+  ]);
+  return {
+    items: runs.map(presentRunListItem),
+    page: input.page,
+    limit: input.limit,
+    total
+  };
+}
+
+export async function getRunDetails(db, runId) {
+  assertPositiveInt(runId, 'id');
+  const run = await db.productionRun.findUnique({
+    where: { id: runId },
+    include: runInclude
+  });
+  if (!run) {
+    throw notFound('Production run not found');
+  }
+
+  const [ledgerRows, auditHistory] = await Promise.all([
+    db.stockMovement.findMany({
+      where: { sourceType: 'PRODUCTION_RUN', sourceId: run.id },
+      orderBy: [{ movementDate: 'asc' }, { id: 'asc' }],
+      include: {
+        item: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            displayUnit: { select: { code: true } }
+          }
+        },
+        createdBy: { select: { id: true, name: true } }
+      }
+    }),
+    db.auditLog.findMany({
+      where: { entity: 'ProductionRun', entityId: run.id },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      include: { user: { select: { id: true, name: true } } }
+    })
+  ]);
+  const variance = run.status === 'COMPLETED'
+    ? computeRunVariance(run, run.lines)
+    : null;
+  const present = presentRun(run);
+
+  return {
+    ...present,
+    lines: present.lines.map((line) => {
+      const lineVariance = variance?.lines.find((entry) => entry.itemId === line.itemId);
+      return {
+        ...line,
+        variance: lineVariance
+          ? {
+              bp: lineVariance.bp,
+              pct: lineVariance.pct,
+              flagged: lineVariance.flagged
+            }
+          : null
+      };
+    }),
+    overheads: [],
+    ledgerRows: ledgerRows.map((movement) => ({
+      ...movement,
+      itemName: movement.item.name,
+      qtyChangeDisplay: formatQty(
+        movement.qtyChange,
+        movement.item.displayUnit.code
+      )
+    })),
+    auditHistory
+  };
+}
+
+export async function updateRun(userId, runId, input) {
+  assertPositiveInt(userId, 'userId');
+  assertPositiveInt(runId, 'runId');
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw badRequest('Production run update must be an object');
+  }
+  const keys = Object.keys(input);
+  if (keys.length === 0 || keys.some((key) => !['notes', 'batchNo'].includes(key))) {
+    throw badRequest('Only notes and batchNo can be updated');
+  }
+  if (input.notes !== undefined && input.notes !== null && typeof input.notes !== 'string') {
+    throw badRequest('notes must be a string or null');
+  }
+  if (
+    input.batchNo !== undefined &&
+    input.batchNo !== null &&
+    (typeof input.batchNo !== 'string' || input.batchNo.trim().length === 0)
+  ) {
+    throw badRequest('batchNo must be a non-empty string or null');
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "ProductionRun" WHERE id = ${runId} FOR UPDATE`;
+    const before = await tx.productionRun.findUnique({
+      where: { id: runId },
+      include: runInclude
+    });
+    if (!before) {
+      throw notFound('Production run not found');
+    }
+    if (before.status !== 'ISSUED' && before.status !== 'COMPLETED') {
+      throw new AppError(409, 'RUN_NOT_EDITABLE', 'Production run cannot be edited', {
+        runId,
+        status: before.status
+      });
+    }
+
+    const after = await tx.productionRun.update({
+      where: { id: runId },
+      data: input,
+      include: runInclude
+    });
+    await writeAudit(tx, {
+      userId,
+      action: 'UPDATE',
+      entity: 'ProductionRun',
+      entityId: runId,
+      before,
+      after
+    });
+    return presentRun(after);
+  }, { maxWait: 10000, timeout: 30000 });
+}
+
+export async function cancelRun(userId, runId, reason) {
+  assertPositiveInt(userId, 'userId');
+  assertPositiveInt(runId, 'runId');
+  if (typeof reason !== 'string' || reason.trim().length === 0) {
+    throw badRequest('reason is required');
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "ProductionRun" WHERE id = ${runId} FOR UPDATE`;
+    const before = await tx.productionRun.findUnique({
+      where: { id: runId },
+      include: runInclude
+    });
+    if (!before) {
+      throw notFound('Production run not found');
+    }
+    if (before.status === 'COMPLETED') {
+      throw new AppError(
+        409,
+        'RUN_COMPLETED',
+        'Completed production runs cannot be cancelled; correct stock with an adjustment',
+        { runId }
+      );
+    }
+    if (before.status !== 'ISSUED') {
+      throw new AppError(409, 'RUN_NOT_OPEN', 'Production run is not open for cancellation', {
+        runId,
+        status: before.status
+      });
+    }
+
+    const issuedMovements = await tx.stockMovement.findMany({
+      where: {
+        sourceType: 'PRODUCTION_RUN',
+        sourceId: runId,
+        qtyChange: { lt: 0 }
+      },
+      orderBy: { id: 'asc' }
+    });
+    const reversalDate = new Date();
+    const ledgerRows = [];
+    for (const movement of issuedMovements) {
+      ledgerRows.push(await addMovement(tx, {
+        itemId: movement.itemId,
+        qtyChange: -movement.qtyChange,
+        movementType: 'ADJUSTMENT',
+        sourceType: 'PRODUCTION_RUN',
+        sourceId: runId,
+        sourceRef: before.runNo,
+        ratePaisePerBase: movement.ratePaisePerBase?.toString() ?? null,
+        batchNo: movement.batchNo,
+        expiryDate: movement.expiryDate,
+        movementDate: reversalDate,
+        userId,
+        note: `Reversal: ${reason.trim()}`
+      }));
+    }
+
+    const after = await tx.productionRun.update({
+      where: { id: runId },
+      data: { status: 'CANCELLED' },
+      include: runInclude
+    });
+    await writeAudit(tx, {
+      userId,
+      action: 'CANCEL',
+      entity: 'ProductionRun',
+      entityId: runId,
+      before,
+      after: {
+        ...after,
+        cancellationReason: reason.trim(),
+        reversedMovementIds: ledgerRows.map(({ id }) => id)
+      }
     });
     return {
       ...presentRun(after),

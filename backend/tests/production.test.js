@@ -14,6 +14,7 @@ let items;
 let bom;
 let production;
 let salesman;
+let accountant;
 let supplier;
 
 function tokenFor(user) {
@@ -140,6 +141,14 @@ beforeEach(async () => {
       email: 'salesman@test.invalid',
       passwordHash: 'test-only',
       role: 'SALESMAN'
+    }
+  });
+  accountant = await db.user.create({
+    data: {
+      name: 'Accountant user',
+      email: 'accountant@test.invalid',
+      passwordHash: 'test-only',
+      role: 'ACCOUNTANT'
     }
   });
   supplier = await db.supplier.create({
@@ -580,5 +589,238 @@ describe('production run completion', () => {
       alertCount: 3
     });
     expect(denied.status).toBe(403);
+  });
+});
+
+describe('production run list, detail and cancellation', () => {
+  it('filters and paginates runs newest first with output, flags and cost', async () => {
+    const first = await postRun(production, { issues: [] });
+    const second = await postRun(production, { issues: [] });
+    const completed = await postRun(production, { issues: [] });
+    const completion = await completeRun(production, completed.body.id, {
+      actualGoodQty: 188
+    });
+    expect(completion.status).toBe(200);
+
+    const query = 'status=ISSUED&from=2026-01-01T00%3A00%3A00.000Z' +
+      '&to=2027-01-01T00%3A00%3A00.000Z' +
+      `&finishedItemId=${items.finished.id}&limit=1`;
+    const [pageOne, pageTwo, completedList] = await Promise.all([
+      request(app).get(`/api/production/runs?${query}&page=1`).set(as(production)),
+      request(app).get(`/api/production/runs?${query}&page=2`).set(as(production)),
+      request(app)
+        .get(`/api/production/runs?status=COMPLETED&finishedItemId=${items.finished.id}`)
+        .set(as(production))
+    ]);
+
+    expect(pageOne.status, JSON.stringify(pageOne.body)).toBe(200);
+    expect(pageOne.body).toMatchObject({ page: 1, limit: 1, total: 2 });
+    expect(pageOne.body.items).toHaveLength(1);
+    expect(pageOne.body.items[0]).toMatchObject({
+      id: second.body.id,
+      runNo: second.body.runNo,
+      product: { id: items.finished.id, name: 'Murukku 200 g' },
+      status: 'ISSUED',
+      plannedOutputQtyBase: 200,
+      plannedOutputQtyDisplay: '200 packet',
+      actualGoodQtyBase: null,
+      actualGoodQtyDisplay: null,
+      flagsCount: 0,
+      materialCostPaise: 0,
+      materialCostDisplay: '0.00'
+    });
+    expect(pageTwo.body.items[0].id).toBe(first.body.id);
+    expect(completedList.body.total).toBe(1);
+    expect(completedList.body.items[0]).toMatchObject({
+      id: completed.body.id,
+      actualGoodQtyBase: 188,
+      actualGoodQtyDisplay: '188 packet',
+      flagsCount: 6
+    });
+  });
+
+  it('returns run lines, overheads, ledger rows and user-attributed audit history', async () => {
+    const started = await postRun(production);
+    const response = await request(app)
+      .get(`/api/production/runs/${started.body.id}`)
+      .set(as(production));
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      id: started.body.id,
+      runNo: started.body.runNo,
+      lines: expect.arrayContaining([
+        expect.objectContaining({
+          itemId: items.flour.id,
+          itemName: 'Flour',
+          plannedQtyBase: 40000,
+          plannedQtyDisplay: '40 kg',
+          issuedQtyBase: 40000,
+          issuedQtyDisplay: '40 kg',
+          scrapQtyBase: 0,
+          scrapQtyDisplay: '0 kg',
+          variance: null
+        })
+      ]),
+      overheads: [],
+      ledgerRows: expect.arrayContaining([
+        expect.objectContaining({
+          sourceType: 'PRODUCTION_RUN',
+          sourceId: started.body.id,
+          sourceRef: started.body.runNo,
+          qtyChange: -40000,
+          qtyChangeDisplay: '-40 kg',
+          itemName: 'Flour'
+        })
+      ]),
+      auditHistory: [
+        expect.objectContaining({
+          action: 'CREATE',
+          entity: 'ProductionRun',
+          user: { id: production.id, name: 'Production user' },
+          before: null
+        })
+      ]
+    });
+    expect(response.body.lines).toHaveLength(5);
+    expect(response.body.ledgerRows).toHaveLength(3);
+    expect(response.body.auditHistory[0].after.runNo).toBe(started.body.runNo);
+    expect(response.body.auditHistory[0].createdAt).toBeTruthy();
+  });
+
+  it('cancels an issued run with positive ledger reversals and restores stock', async () => {
+    const purchase = await postPurchase();
+    expect(purchase.status).toBe(201);
+    const started = await postRun(production, { issues: benchmarkIssues() });
+    expect(await getBalance(db, items.flour.id)).toBe(120000);
+    expect(await getBalance(db, items.oil.id)).toBe(19500);
+    expect(await getBalance(db, items.spice.id)).toBe(3800);
+
+    const response = await request(app)
+      .post(`/api/production/runs/${started.body.id}/cancel`)
+      .set(as(production))
+      .send({ reason: ' operator correction ' });
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe('CANCELLED');
+    expect(response.body.ledgerRows).toHaveLength(3);
+    expect(response.body.ledgerRows.every((row) =>
+      row.movementType === 'ADJUSTMENT' &&
+      row.qtyChange > 0 &&
+      row.sourceType === 'PRODUCTION_RUN' &&
+      row.sourceId === started.body.id &&
+      row.sourceRef === started.body.runNo &&
+      row.note === 'Reversal: operator correction'
+    )).toBe(true);
+
+    expect(await getBalance(db, items.flour.id)).toBe(160000);
+    expect(await getBalance(db, items.oil.id)).toBe(30000);
+    expect(await getBalance(db, items.spice.id)).toBe(5000);
+    const rows = await db.stockMovement.findMany({
+      where: { sourceType: 'PRODUCTION_RUN', sourceId: started.body.id }
+    });
+    expect(rows).toHaveLength(6);
+    expect(rows.filter((row) => row.qtyChange < 0)).toHaveLength(3);
+    expect(rows.filter((row) => row.qtyChange > 0)).toHaveLength(3);
+    expect(await db.auditLog.count({
+      where: {
+        entity: 'ProductionRun',
+        entityId: started.body.id,
+        action: 'CANCEL',
+        userId: production.id
+      }
+    })).toBe(1);
+    const detail = await request(app)
+      .get(`/api/production/runs/${started.body.id}`)
+      .set(as(production));
+    const cancelAudit = detail.body.auditHistory.find((entry) => entry.action === 'CANCEL');
+    expect(cancelAudit).toMatchObject({
+      user: { id: production.id, name: 'Production user' },
+      after: {
+        status: 'CANCELLED',
+        cancellationReason: 'operator correction'
+      }
+    });
+    expect(cancelAudit.after.reversedMovementIds).toHaveLength(3);
+  });
+
+  it('rejects cancelling completed runs and cancelling the same run twice', async () => {
+    const completed = await postRun(production, { issues: [] });
+    expect((await completeRun(production, completed.body.id, { actualGoodQty: 1 })).status)
+      .toBe(200);
+    const completedCancel = await request(app)
+      .post(`/api/production/runs/${completed.body.id}/cancel`)
+      .set(as(production))
+      .send({ reason: 'mistake' });
+    expect(completedCancel.status).toBe(409);
+    expect(completedCancel.body.error.code).toBe('RUN_COMPLETED');
+
+    const issued = await postRun(production, { issues: [] });
+    const first = await request(app)
+      .post(`/api/production/runs/${issued.body.id}/cancel`)
+      .set(as(production))
+      .send({ reason: 'mistake' });
+    const second = await request(app)
+      .post(`/api/production/runs/${issued.body.id}/cancel`)
+      .set(as(production))
+      .send({ reason: 'mistake' });
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(409);
+    expect(second.body.error.code).toBe('RUN_NOT_OPEN');
+  });
+
+  it('updates only notes and batch number with audit and allows accountant reads only', async () => {
+    const started = await postRun(production, { issues: [] });
+    const update = await request(app)
+      .patch(`/api/production/runs/${started.body.id}`)
+      .set(as(production))
+      .send({ notes: 'Shift A', batchNo: 'BATCH-20' });
+    expect(update.status).toBe(200);
+    expect(update.body).toMatchObject({ notes: 'Shift A', batchNo: 'BATCH-20' });
+
+    const unknownField = await request(app)
+      .patch(`/api/production/runs/${started.body.id}`)
+      .set(as(production))
+      .send({ status: 'COMPLETED' });
+    const emptyUpdate = await request(app)
+      .patch(`/api/production/runs/${started.body.id}`)
+      .set(as(production))
+      .send({});
+    expect(unknownField.status).toBe(400);
+    expect(emptyUpdate.status).toBe(400);
+    expect(await db.auditLog.count({
+      where: { entity: 'ProductionRun', entityId: started.body.id, action: 'UPDATE' }
+    })).toBe(1);
+
+    const completion = await completeRun(production, started.body.id, { actualGoodQty: 1 });
+    expect(completion.status).toBe(200);
+    const completedUpdate = await request(app)
+      .patch(`/api/production/runs/${started.body.id}`)
+      .set(as(production))
+      .send({ notes: 'Reviewed' });
+    expect(completedUpdate.status).toBe(200);
+    expect(completedUpdate.body.notes).toBe('Reviewed');
+
+    const [list, detail, deniedCancel] = await Promise.all([
+      request(app).get('/api/production/runs').set(as(accountant)),
+      request(app).get(`/api/production/runs/${started.body.id}`).set(as(accountant)),
+      request(app)
+        .post(`/api/production/runs/${started.body.id}/cancel`)
+        .set(as(accountant))
+        .send({ reason: 'not permitted' })
+    ]);
+    expect(list.status).toBe(200);
+    expect(detail.status).toBe(200);
+    expect(deniedCancel.status).toBe(403);
+    expect(detail.body.auditHistory.map((entry) => entry.action)).toEqual([
+      'CREATE',
+      'UPDATE',
+      'UPDATE',
+      'UPDATE'
+    ]);
+    expect(detail.body.auditHistory[1]).toMatchObject({
+      user: { id: production.id, name: 'Production user' },
+      before: { notes: null, batchNo: null },
+      after: { notes: 'Shift A', batchNo: 'BATCH-20' }
+    });
   });
 });

@@ -2,7 +2,7 @@
 Last updated: 2026-11-25 by Copilot
 
 ## Next Step
-Step 20 - Production run list, detail and cancellation
+Step 21 - Benchmark steps 1-3
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install`; start/stop PostgreSQL on port 5433 with `npm run db:up` / `npm run db:down`.
@@ -11,7 +11,7 @@ Step 20 - Production run list, detail and cancellation
 - Start API/UI in separate terminals: `npm run dev:backend` and `npm run dev:frontend`.
 - Prisma commands from `backend/`: `npx prisma format`, `npx prisma validate`, `npx prisma migrate dev`, `npx prisma migrate status`.
 - Seed with `npm run seed`; reset/reseed (destructive; production is refused) with `npm run seed:reset`; print ledger balances with `npm run balances`.
-- Run benchmarks after reset: `npm run bench:check -- --stage=opening`; available stages: `after-purchase`, `after-issue`, `after-run`, `after-dispatch`, `final`.
+- Run benchmarks from `backend/`: `npm run bench:check -- --stage=opening`; available stages: `after-purchase`, `after-issue`, `after-run`, `after-dispatch`, `final`.
 - Purchase receipts use PRODUCTION/ADMIN and decimal-string qty/rates; check with `npm run bench:check -- --stage=after-purchase`. Adjustments use ADMIN/PRODUCTION with positive qty and IN/OUT direction.
 - Numbering tests: `npm test -- tests/lib/fy.test.js tests/numberingService.test.js`. Call `nextNumber(tx, 'INV', date)` inside the document transaction to avoid burning numbers on rollback.
 - Demo password is `Demo@123` for `admin@demo.com`, `production@demo.com`, `salesman.a@demo.com`, `salesman.b@demo.com`, `accountant@demo.com`, and `owner@demo.com`. Login at `POST /api/auth/login` and use the token as `Authorization: Bearer <token>`.
@@ -20,6 +20,7 @@ Step 20 - Production run list, detail and cancellation
 - Start a run with `POST /api/production/runs` (PRODUCTION/ADMIN), providing exactly one of `bomId` or `finishedItemId`; the latter selects the active BOM. Optional `issues` use decimal-string quantities and units.
 - Complete an ISSUED run with `POST /api/production/runs/:id/complete` (PRODUCTION/ADMIN), supplying actual good/rejected output and optional consumed/scrapped BOM quantities.
 - Read completed run variance with `GET /api/production/runs/:id/variance`; list completed runs and alert counts with `GET /api/production/variance?from=&to=&flaggedOnly=true&page=&limit=` (PRODUCTION/ADMIN/ACCOUNTANT/OWNER).
+- Browse runs with `GET /api/production/runs?status=&from=&to=&finishedItemId=&page=&limit=` and `GET /api/production/runs/:id` (PRODUCTION/ADMIN/ACCOUNTANT/OWNER); update only `notes`/`batchNo` with `PATCH /api/production/runs/:id`, or cancel an ISSUED run with `POST /api/production/runs/:id/cancel` (PRODUCTION/ADMIN).
 - `GET /api/audit` requires ADMIN/ACCOUNTANT/OWNER; supports entity/user/date filters and pagination (limit max 100).
 - Check `src/lib` for `parseFloat`/`toFixed` with `rg -n "parseFloat|toFixed" src/lib` (expect no matches).
 - Append-only trigger check: `docker compose exec -it db psql -U oda -d oda`, then `UPDATE "StockMovement" SET "qtyChange" = 1;` (must fail).
@@ -32,7 +33,7 @@ Step 20 - Production run list, detail and cancellation
 09-14 [x]: ledger service; stock APIs/benchmark checker; FY numbering; purchases; adjustments; master-data APIs.
 ### Phase 3 - BOM and production (highest weight)
 15-16 [x]: BOM CRUD/versioning/cloning; planned-consumption calculator.
-17-19 [x] production start/issues, completion/output/scrap, and variance/tolerance; 20 [ ] run list/detail/cancel; 21 [ ] benchmark steps 1-3.
+17-20 [x] production start/issues, completion/output/scrap, variance/tolerance, run history/edit/cancel; 21 [ ] benchmark steps 1-3.
 ### Phase 4 - Sales loop
 22-33 [ ] price resolution; orders; order roles/status; availability; approval; GST; invoicing; dispatch; payments; credit notes; shortage flow; benchmark steps 4-7.
 ### Phase 5 - Costing
@@ -45,6 +46,7 @@ Step 20 - Production run list, detail and cancellation
 57-60 [ ] full benchmark/fixes; deployment; README/design note; demo/interview/final audit.
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
+- Step 20 (2026-11-25): Added filtered/paginated run history, detail with ledger/audit trail, audited notes/batch edits, and transactional cancellation with positive ledger reversals. Files: production service/routes/tests and this log. `npm test` passes (100); `npm run bench:check -- --stage=after-run` passes (12 checks). Decision: date filters use `startedAt`; completed runs require stock adjustments for correction and cannot be cancelled.
 - Step 19 (2026-11-25): Added snapshot-tolerance yield/material variance calculations, persisted flags during completion, run detail and paginated/filterable variance APIs, and final benchmark variance assertions with carton/pouch informational output. Files: variance service, production service/route/tests, benchmark checker, and this log. Targeted variance tests pass (14); full `npm test` and API benchmark verification pass. Decision: flags use the run's saved tolerance and strict `abs(bp) > tolerance`; extra carton/pouch flags must be explained in README.
 - Step 18 (2026-11-25): Added locked transactional completion, packaging consumption/scrap issues, finished output, final material-cost snapshot, audit, and `POST /api/production/runs/:id/complete`. Added full benchmark completion and rollback/validation tests, plus a completed-output benchmark assertion. Files: production service/route, production tests, benchmark checker, and this log. `npm test` passes (94); reset + purchase + start + complete + `after-run` benchmark passes (12 checks). Variance remains unset for Step 19.
 - Step 17 (2026-11-25): Added atomic run creation, plan snapshots, raw-material ledger issues, average-rate material costs, audit, and `POST /api/production/runs`; added five API cases and the after-issue benchmark. Files: production service/route, app mount, production tests, benchmark checker, and this log. `npm test` passes (89); reset + purchase + run + after-issue benchmark passes (10 checks). Decision: `issuedQty` is total stock-out (consumed plus scrap); defer packaging to completion by default.
@@ -73,7 +75,7 @@ Step 20 - Production run list, detail and cancellation
 - `backend/src/config/`, `middleware/`: role/capability matrix, auth, validation, and centralized error handling.
 - `backend/src/lib/`: Decimal money/GST/units/variance/BOM math, FY, states, errors, audit, and async helpers.
 - `backend/src/routes/`: health, auth, audit, stock/adjustments, purchases, BOMs, production, items, customers/prices, suppliers, settings, and users.
-- `backend/src/services/`: auth, append-only ledger, stock availability, adjustment, purchase/costing, BOM, production-run start/completion and variance, master data, settings, and user logic.
+- `backend/src/services/`: auth, append-only ledger, stock availability, adjustment, purchase/costing, BOM, production-run start/completion/variance/history/cancellation, master data, settings, and user logic.
 - `backend/tests/`: API/unit suites; `helpers/db.js` and setup guard test operations to `oda_test`.
 - `frontend/`: Vite/React UI, Tailwind, API client, and `/api` proxy.
 
@@ -87,7 +89,7 @@ Step 20 - Production run list, detail and cancellation
 - `/api/suppliers`: `GET /?active=`, `GET /:id` authenticated; `POST /`, `PATCH /:id` ADMIN. `/api/settings`: `GET /` authenticated; `PUT /:key` ADMIN.
 - `/api/users`: `GET /`, `POST /`, `PATCH /:id`, `POST /:id/reset-password` ADMIN; responses omit password hashes.
 - `/api/boms`: `GET /?finishedItemId=&active=`, `GET /:id`, `GET /:id/plan` ADMIN/PRODUCTION/ACCOUNTANT/OWNER; `POST /`, `PUT /:id`, `POST /:id/clone` ADMIN/PRODUCTION. Plan accepts exactly one of `?batches=`, `?targetOutput=`, or `?itemId=&qty=&unit=`.
-- `/api/production`: `POST /runs` and `POST /runs/:id/complete` PRODUCTION/ADMIN; `GET /runs/:id/variance` and `GET /variance?from=&to=&flaggedOnly=&page=&limit=` PRODUCTION/ADMIN/ACCOUNTANT/OWNER. Completion snapshots run variance; detail returns yield/material comparisons and alerts; list returns completed runs with alert counts.
+- `/api/production`: `POST /runs`, `POST /runs/:id/complete`, `PATCH /runs/:id`, and `POST /runs/:id/cancel` PRODUCTION/ADMIN; `GET /runs?status=&from=&to=&finishedItemId=&page=&limit=`, `GET /runs/:id`, `GET /runs/:id/variance`, and `GET /variance?from=&to=&flaggedOnly=&page=&limit=` PRODUCTION/ADMIN/ACCOUNTANT/OWNER. Run detail includes lines, ledger rows, and audit history; only ISSUED runs can be cancelled.
 - Test-only: `GET /api/_whoami`, `/api/_admin-only`, `/api/_approve-only`.
 - Stock availability subtracts outstanding approved/invoiced reservations; purchase cost averages use Decimal rates; adjustment quantities are positive magnitudes with IN/OUT direction, and adjustment history uses `createdAt`.
 
@@ -102,6 +104,7 @@ Step 20 - Production run list, detail and cancellation
 - Planned consumption rounds fractional batch counts to four decimals and each resulting output/material quantity to the nearest integer using half-up rounding.
 - A run line's `issuedQty` records total quantity leaving stock for the run (consumed plus scrap); step 17 starts raw-material issues, while packaging can be issued at completion.
 - Variance flags compare total issued quantities (consumed plus scrap) with BOM plan using the run's saved tolerance; `abs(bp)` must be strictly greater than tolerance. Cartons -10.00% are flagged and pouches -3.00% are not flagged at 300 bp; these are extra flags to explain in README.
+- Production run list `from`/`to` filters apply inclusively to `startedAt`; cancellation reverses issued outflows as positive `ADJUSTMENT` ledger rows and retains all run history.
 
 ## Assumptions (copy into README at the end)
 - Project source and project guidance live at the Git repository root.
@@ -125,7 +128,7 @@ Step 20 - Production run list, detail and cancellation
 - Adjustments have no editable effective date; history filtering uses the recorded `createdAt`, and corrections always append rather than update or delete.
 - Master data has no hard-delete endpoints; item deactivation is rejected while ledger balance is nonzero.
 - BOMs have no delete endpoint; production-run history stays attached to its original recipe version.
-- Production runs can be started, completed, and variance-checked; run history/cancellation remain Step 20.
+- Completed production runs cannot be cancelled; correct them with stock adjustments. Cancelled runs retain their plan, line quantities, and ledger history.
 - Planned batch counts are capped at 100; fractional ingredient results are rounded to integer base units as required for stock quantities.
 - Explicit `bomId` can start a run from that BOM version; `finishedItemId` resolves the active BOM.
 - Test DB reset timeout raised for slow Windows/Docker.
@@ -134,4 +137,8 @@ Step 20 - Production run list, detail and cancellation
 opening PASS (6 checks; later-stage checks skipped)
 after-purchase PASS (4 checks; later-stage checks skipped)
 after-issue PASS (10 checks; later-stage checks skipped)
-after-run PASS (12 checks; later-stage checks skipped)
+after-run PASS (12 checks; 0 failed; later-stage checks skipped)
+
+## Day 1 checkpoint
+Steps 01-20 done. Run `npm run bench:check -- --stage=after-run` from `backend/`.
+Current PASS rows: purchase receipt (60 kg at Rs 45/kg), flour weighted-average rate (4.3125), purchases count (1), started runs count (1); after-run balances flour 120 kg, oil 19.5 l, spice 3.8 kg, pouches 306 pcs, cartons 21 pcs, finished goods 238 packets; completed run with 188 good packets and completed runs count (1).

@@ -4,7 +4,14 @@ import { asyncHandler } from '../lib/asyncHandler.js';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireCapability } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
-import { completeRun, startRun } from '../services/productionService.js';
+import {
+  cancelRun,
+  completeRun,
+  getRunDetails,
+  listRuns,
+  startRun,
+  updateRun
+} from '../services/productionService.js';
 import { getRunVariance, listRunVariances } from '../services/varianceService.js';
 
 const router = Router();
@@ -63,6 +70,51 @@ const varianceListQuerySchema = z.object({
     });
   }
 });
+const runListQuerySchema = z.object({
+  status: z.enum(['ISSUED', 'COMPLETED', 'CANCELLED']).optional(),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+  finishedItemId: z.coerce.number().int().positive().max(2147483647).optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(50)
+}).superRefine((query, context) => {
+  if (query.from && query.to && query.from > query.to) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: '`from` must be earlier than or equal to `to`',
+      path: ['from']
+    });
+  }
+});
+const updateRunSchema = z.object({
+  notes: z.string().nullable().optional(),
+  batchNo: z.string().trim().min(1).nullable().optional()
+}).strict().refine((input) => Object.keys(input).length > 0, {
+  message: 'Provide notes or batchNo'
+});
+const cancelRunSchema = z.object({
+  reason: z.string().trim().min(1)
+}).strict();
+
+router.get(
+  '/runs',
+  authenticate,
+  requireCapability('production:read'),
+  validate({ query: runListQuerySchema }),
+  asyncHandler(async (req, res) => {
+    res.json(await listRuns(prisma, req.query));
+  })
+);
+
+router.get(
+  '/runs/:id',
+  authenticate,
+  requireCapability('production:read'),
+  validate({ params: idParamsSchema }),
+  asyncHandler(async (req, res) => {
+    res.json(await getRunDetails(prisma, req.params.id));
+  })
+);
 
 router.get(
   '/variance',
@@ -104,6 +156,26 @@ router.post(
   validate({ params: idParamsSchema, body: completeRunSchema }),
   asyncHandler(async (req, res) => {
     res.json(await completeRun(req.user.id, req.params.id, req.body));
+  })
+);
+
+router.patch(
+  '/runs/:id',
+  authenticate,
+  requireCapability('production:write'),
+  validate({ params: idParamsSchema, body: updateRunSchema }),
+  asyncHandler(async (req, res) => {
+    res.json(await updateRun(req.user.id, req.params.id, req.body));
+  })
+);
+
+router.post(
+  '/runs/:id/cancel',
+  authenticate,
+  requireCapability('production:write'),
+  validate({ params: idParamsSchema, body: cancelRunSchema }),
+  asyncHandler(async (req, res) => {
+    res.json(await cancelRun(req.user.id, req.params.id, req.body.reason));
   })
 );
 
