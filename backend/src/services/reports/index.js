@@ -29,3 +29,5 @@ import purchaseRegister from './purchaseRegister.js';
 registerReport(purchaseRegister);
 import productionReport from './productionReport.js';
 registerReport(productionReport);
+import receivablesAgeing from './receivablesAgeing.js';
+registerReport(receivablesAgeing);

@@ -408,3 +408,5 @@ Audit logs capture who changed an entity and the recorded before-and-after value
 - B2CL is an unregistered inter-state invoice above 25000000 paise; other unregistered supplies are B2CS. The constant is `B2CL_THRESHOLD_PAISE`.
 - The GST HSN UQC mapping is packet -> PAC, pcs -> PCS, g -> GMS, kg -> KGS, ml -> MLT, l -> LTR; unknown units use NOS. Cancellations are represented by credit notes and the documents-issued cancelled count is always zero.
 - The GST report does not yet include HSN-level exempt or nil-rated supplies, cess, or amendments.
+- `receivables-ageing` uses invoice issue date for whole IST calendar-day age because Customer has no credit-term field. An as-of snapshot includes POSTED invoices and invoices cancelled after the end of that as-of day; it includes payments dated on or before that day.
+- Invoice-linked payments reduce their eligible invoice first. Unallocated payments, and payments linked to invoices excluded from the as-of snapshot, reduce the oldest eligible invoice balances first; any remainder is customer credit.

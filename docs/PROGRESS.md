@@ -2,7 +2,7 @@
 Last updated: 2026-11-26 by Copilot
 
 ## Next Step
-Step 43 - Receivables ageing
+Step 44 - Remaining receivables reports
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install`; start/stop PostgreSQL on port 5433 with `npm run db:up` / `npm run db:down`.
@@ -19,6 +19,7 @@ Step 43 - Receivables ageing
 - Stock report verification: from `backend/`, run `npm test -- tests/lib/stockClassify.test.js tests/reports.stock.test.js`.
 - Purchase register verification: from `backend/`, run `npm test -- tests/lib/purchaseAgg.test.js tests/reports.purchase.test.js`.
 - Production report verification: from `backend/`, run `npm test -- tests/lib/productionAgg.test.js tests/reports.production.test.js`.
+- Receivables ageing verification: from `backend/`, run `npm test -- tests/lib/receivablesAgeing.test.js tests/reports.receivablesAgeing.test.js`.
 - Run the API benchmark from `backend/` after `npm run seed:reset` with the API running: `npm run bench:play` (defaults through step 8; optional `-- --upto=1` through `--upto=8`, `API_URL` overrides the default). The script prints the exact checker command; full playback ends with `npm run bench:check -- --stage=final`.
 - Order catalog: authenticated `GET /api/catalog/order-items?customerId=<id>` for SALESMAN/ADMIN; customer prices override defaults, and items without a positive price are omitted.
 - Create an order with SALESMAN `POST /api/orders` using `{ clientRef?, customerId, notes?, lines: [{ itemId, qty }] }`; prices are resolved server-side, and retrying a supplied `clientRef` returns the existing order.
@@ -63,7 +64,7 @@ Step 43 - Receivables ageing
 ### Phase 5 - Costing
 34 [x] weighted-average cost service and read APIs; 35 [x] overhead allocation per run and cost per good packet; 36 [x] cost sheets, cost per packet, product costing, and shared benchmark test helpers.
 ### Phase 6 - Reports and PDF
-37 [x] report framework and sales register; 38 [x] customer/product sales reports; 39 [x] GST summary; 40 [x] stock summary and ledger; 41 [x] purchase register; 42 [x] production report; 43-45 [ ] receivables reports; exports; invoice PDF.
+37 [x] report framework and sales register; 38 [x] customer/product sales reports; 39 [x] GST summary; 40 [x] stock summary and ledger; 41 [x] purchase register; 42 [x] production report; 43 [x] receivables ageing; 44-45 [ ] remaining receivables reports, exports, invoice PDF.
 ### Phase 7 - Frontend
 46-56 [ ] router/auth/role layouts; login; salesman orders/customers; admin orders/invoices; production/stock/reports pages; dashboard/alerts.
 ### Phase 8 - Ship
@@ -78,6 +79,7 @@ Step 43 - Receivables ageing
 - Step 40 (2026-11-26): Added pure movement classification and registered stock summary/ledger reports with raw-SQL aggregates, valuation, per-item reconciliation, and running balances. Files: stockClassify, report definitions/registry append, and new unit/API tests. `npm test` passes (279; baseline 271); focused stock suite 8 PASS. Decisions: movement classification follows ledger type/sign, reconciliation is exposed per row, finished-goods value stays in costing, and ledger reads cap at 20000 movements.
 - Step 41 (2026-11-26): Added the `purchase-register` report with chronological line detail, filtered totals, and supplier/item summaries, plus IST, filter, pagination, role, and aggregation tests. Files: purchaseAgg, purchaseRegister, report registry, new tests, and this log. `npm test` passes (285; baseline 279); focused suite 6 PASS. Decision: amounts show purchase values as entered; GST/input tax credit is not tracked.
 - Step 42 (2026-11-26): Added the `production-report` using stored run/line flags, rates and costs for run, consumption, wastage and yield sections; added aggregation/API coverage. Files: productionAgg, productionReport, report registry, and new tests. `npm test` passes (291; baseline 285); focused suite 6 PASS. Decisions: period uses completion date when available, otherwise start date; consumption follows paginated runs.
+- Step 43 (2026-11-26): Added `receivables-ageing` with IST as-of cutoffs, four customer ageing buckets, optional invoice detail, FIFO allocation, and pure integer tests. Files: receivablesAgeing helper/report, report registry, new tests, DATA_MODEL, and this log. `npm test` passes (299; baseline 291); focused suite 8 PASS. Decision: issue date is the age basis because no credit-term field exists; linked payments to invoices excluded at the selected date become unallocated.
 - Step 39 (2026-11-26): Added pure GST section aggregation and the registered `gst-summary` report with GSTR-1 B2B/B2CL/B2CS, credit-note, HSN and document sections plus net GSTR-3B summaries. Files: gstReport, report definition/registry append, new unit/API tests, DATA_MODEL and this log. Baseline 263; focused report regression suite 32 PASS. Decisions: invoice issueDate/status and credit-note createdAt drive separate periods; GSTR-3B/HSN net full-invoice credits; B2CL uses 25000000 paise; UQC map and zero cancellation counts documented.
 - Step 33 (2026-11-26): Added the public-API benchmark helper and ordered steps 4-7 test; extended playback through payments and checker proofs for dispatch, outstanding, and Distributor B's shortage. Files: new benchmark flow/test, additive playback/checker changes, and this log. `npm test` passes (204; baseline 199); live playback passes, after-dispatch checker 14 PASS/0 FAIL, final checker 21 PASS/0 FAIL, `--upto=3` and the non-fresh guard verified. Decisions: Vitest already serializes files; use the real invoice-preview API for IGST and preserve Step 26's 409 shortage behavior. Applied the pending additive invoice-snapshot migration to the dev DB before live playback.
 - Step 32 (2026-11-26): Added integer FIFO allocation and batch planning, a grouped finished-goods shortage summary, the role-gated orders shortage endpoint, and API/unit coverage. Files: planning helper, additive availability/orders changes, new tests, and this log. `npm test` passes (199; baseline 189). Decisions: preserve actual Step 26 full-approval response (409 `INSUFFICIENT_STOCK`, availability details include `shortBy`); reduced approvals and reasoned rejection work. FIFO applies to SUBMITTED orders; suggested batches use the highest-version active BOM.
@@ -119,10 +121,10 @@ Step 43 - Receivables ageing
 - `backend/prisma/`: schema, invoice snapshot/immutability migration, append-only ledger and stock-adjustment migrations, and idempotent benchmark seed.
 - `backend/scripts/`: guarded reset/reseed, balance output, staged checker including dispatch/outstanding/shortage/cost proofs, and API-only benchmark playback through steps 1-8.
 - `backend/src/config/`, `middleware/`: role/capability matrix, auth, validation, and centralized error handling.
-- `backend/src/lib/`: Decimal money/GST/cost/allocation/invoice/units/variance/BOM/pricing/order/shortage/planning/outstanding/report/customer-product sales/GST, purchase and production aggregation math and stock-movement classification, order transitions, IST date ranges, FY, states, errors, audit, and async helpers.
+- `backend/src/lib/`: Decimal money/GST/cost/allocation/invoice/units/variance/BOM/pricing/order/shortage/planning/outstanding/receivables-ageing/report/customer-product sales/GST, purchase and production aggregation math and stock-movement classification, order transitions, IST date ranges, FY, states, errors, audit, and async helpers.
 - `backend/src/routes/`: health, auth, audit, stock/adjustments/finished availability, purchases, costing, reports, BOMs, production and overheads, catalog, orders/invoice preview/shortage list, invoice create/read/cancel and dispatch status, credit notes, dispatches, payments/outstanding, items, customers/prices, suppliers, settings, and users.
-- `backend/src/services/`: auth, append-only ledger, stock/availability/shortage planning, adjustment, purchase/costing/cost-sheet/pricing/order workflows, GST drafts, invoice/dispatch/credit-note/payment workflows, report registry and sales-register/customer/product/GST/stock/purchase/production reports, BOM, production-run start/completion/overhead costing/variance/history/cancellation, master data, settings, and user logic.
-- `backend/tests/`: API/unit suites including benchmark parts 1-2, `benchmarkFlow.js`, reusable `benchmarkFull.js` and `benchmarkExtras.js`, report framework/sales-register/customer-product/GST/stock/purchase/production reports and pure aggregation/classification, weighted-average/overhead/cost-sheet costing, pricing, catalog, order workflows, GST previews/invoice math, invoice creation/immutability/cancellation, credit notes, dispatch, payment/outstanding, shortage planning/flow, order transitions/math, and IST date coverage; `helpers/db.js` and setup guard test operations to `oda_test`.
+- `backend/src/services/`: auth, append-only ledger, stock/availability/shortage planning, adjustment, purchase/costing/cost-sheet/pricing/order workflows, GST drafts, invoice/dispatch/credit-note/payment workflows, report registry and sales-register/customer/product/GST/stock/purchase/production/receivables reports, BOM, production-run start/completion/overhead costing/variance/history/cancellation, master data, settings, and user logic.
+- `backend/tests/`: API/unit suites including benchmark parts 1-2, `benchmarkFlow.js`, reusable `benchmarkFull.js` and `benchmarkExtras.js`, report framework/sales-register/customer-product/GST/stock/purchase/production/receivables reports and pure aggregation/classification, weighted-average/overhead/cost-sheet costing, pricing, catalog, order workflows, GST previews/invoice math, invoice creation/immutability/cancellation, credit notes, dispatch, payment/outstanding, shortage planning/flow, order transitions/math, and IST date coverage; `helpers/db.js` and setup guard test operations to `oda_test`.
 - `frontend/`: Vite/React UI, Tailwind, API client, and `/api` proxy.
 
 ## API endpoints (METHOD path - roles - purpose)
@@ -143,6 +145,7 @@ Step 43 - Receivables ageing
 - `/api/reports`: `GET /stock-summary?from=&to=&type=&itemId=&hideEmpty=&page=&limit=` and `GET /stock-ledger?from=&to=&type=&itemId=&page=&limit=` (ADMIN/PRODUCTION/ACCOUNTANT/OWNER) provide per-item reconciliation/value and paginated running movements; ledger reads are capped at 20000 rows.
 - `/api/reports`: `GET /purchase-register?from=&to=&supplierId=&itemId=&type=&page=&limit=` (ADMIN/PRODUCTION/ACCOUNTANT/OWNER via `purchases:read`) returns purchase lines and supplier/item summaries, with inclusive IST purchase dates and totals independent of pagination.
 - `/api/reports`: `GET /production-report?from=&to=&status=&finishedItemId=&flaggedOnly=&page=&limit=` (PRODUCTION/ADMIN/ACCOUNTANT/OWNER) reports stored run and material variances, costs, wastage and yield; period date is completedAt or startedAt, and consumption follows the run page.
+- `/api/reports`: `GET /receivables-ageing?asOf=&customerId=&detail=` (ADMIN/ACCOUNTANT/OWNER via `payments:read`) summarizes customer balances in 0-30, 31-60, 61-90 and 91+ IST-day buckets; `detail=true` adds invoice rows. Unallocated payments apply oldest-invoice-first.
 - `/api/credit-notes`: `GET /?customerId=&from=&to=&page=&limit=` and `GET /:id` ADMIN/ACCOUNTANT/OWNER. `POST /api/invoices/:id/cancel` ADMIN creates a full credit note and reverses dispatched stock.
 - `/api/items`: `GET /?type=&active=`, `GET /:id` authenticated; `POST /`, `PATCH /:id` ADMIN.
 - `/api/customers`: `GET /?type=&active=`, `GET /:id`, `GET /:id/prices` authenticated (salesmen assigned customers only); `POST /`, `PATCH /:id`, `PUT /:id/prices` ADMIN.
@@ -179,6 +182,7 @@ Step 43 - Receivables ageing
 - An order becomes DISPATCHED only after every line on its invoice has been dispatched; partial dispatch keeps it INVOICED.
 - Customer outstanding is `max(0, posted invoice totals - all customer payments)`; the negative difference is reported as credit. Overpayments are rejected, and an unallocated payment reduces customer-wide outstanding but cannot be an advance beyond the amount owed.
 - Payments linked to a subsequently cancelled invoice remain in customer-wide paid totals and are reported as unallocated credit. The v1 payment API has no edit, delete, or reversal operation.
+- Receivables ageing uses whole IST calendar days from invoice issueDate because no credit-term field exists. The as-of snapshot includes eligible invoices/payments through the selected IST day; unallocated funds, including payments linked to excluded invoices, apply oldest eligible balances first.
 - Full invoice cancellation creates one credit note, changes only invoice status/cancellation fields, cancels the linked order, and appends positive SALES_RETURN movements for goods assumed to be physically returned and saleable. The unique `Invoice.orderId` means the order cannot be re-invoiced; create a new order instead. Step 39 GST summaries must subtract credit notes.
 - Step 32 read-only audit: full approval beyond free stock is rejected by Step 26 as HTTP 409 `INSUFFICIENT_STOCK` (not the prompt's 422), with `availability` details including line `shortBy`; do not change this established behavior. Reduced `approvedQty` is allowed if covered and an admin can reject with a reason. Invoice creation copies the GST draft: seller state 33 and Distributor B state 29 produce `isInterState: true`, place of supply 29, IGST only; Retailer A state 33 remains CGST/SGST.
 - Submitted finished-goods orders compete for free inventory FIFO; approved/invoiced quantities are reserved. A shortage is addressed by approving a reduced quantity, rejecting, waiting for production, or creating a new backorder order. Suggested batches use the highest-version active BOM. The adjustment API's real reason enum uses `OTHER`; explanatory text is submitted as `note`.
@@ -212,6 +216,7 @@ Step 43 - Receivables ageing
 - BOM PUT preserves existing notes when omitted; clone copies source notes. Clone line overrides apply only to items present after the requested replacements.
 - Plan endpoint requires exactly one mode; issued quantities are interpreted in the selected BOM item's dimension and converted to base units.
 - The main benchmark intentionally leaves Distributor B's shortage order unapproved; a backorder is a new order after production replenishes stock.
+- Receivables ageing includes customers with an eligible invoice and an outstanding balance or remaining credit; `detail=true` opts into invoice rows, and sections are capped at 50000 rows.
 
 ## Known issues / TODO
 - Stock ledger reports reject filters matching more than 20000 movements; narrow the period or select an item.
@@ -237,6 +242,7 @@ Step 43 - Receivables ageing
 - Finished-goods inventory is not valued at the production-run cost in v1; cost sheets and product-period reports expose the cost separately. Zero-good runs have no per-packet cost.
 - Customer/product sales reports do not net credit notes issued in later periods; use the GST report for GST-period netting.
 - GST report v1 has no HSN-level exempt/nil-rated sections, cess, or amendment handling.
+- Customer ageing uses invoice dates because no credit-term field exists; invoice due dates and credit-term overrides are not modeled.
 - Step 36's `benchmarkExtras.createDistributorInvoice` sends `itemId` instead of the approval API's `lineId`; fix the helper in a later step that permits test-helper changes.
 
 ## Benchmark status (stage: PASS/FAIL/SKIPPED)
