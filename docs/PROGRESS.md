@@ -1,13 +1,14 @@
 # PROGRESS.md - live project memory (UPDATE AFTER EVERY STEP)
-Last updated: 2026-11-25 by Copilot
+Last updated: 2026-11-26 by Copilot
 
 ## Next Step
-Step 30 - Payments
+Step 31 - Cancel invoice with credit note and stock reversal
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install`; start/stop PostgreSQL on port 5433 with `npm run db:up` / `npm run db:down`.
 - Create `oda_test` once: `docker compose exec -T db createdb -U oda oda_test`. From `backend/`, set `$env:DATABASE_URL = 'postgresql://oda:oda@localhost:5433/oda_test?schema=public'`, run `npx prisma migrate deploy` and `npx prisma generate`, then `Remove-Item Env:DATABASE_URL`; Vitest refuses non-test databases. Step 28 migration `20261125173751_invoice_snapshot_immutable` is applied to `oda_test`.
 - Run backend tests from `backend/`: `npm test`. Build the frontend with `npm --prefix frontend run build`.
+- Payments verification: from `backend/`, run `npm test -- tests/outstanding.test.js tests/payments.test.js`.
 - Run the API benchmark from `backend/` after `npm run seed:reset` with the API running: `npm run bench:play` (optional `-- --upto=1|2|3`, `API_URL` overrides the default); then run `npm run bench:check -- --stage=after-run`.
 - Order catalog: authenticated `GET /api/catalog/order-items?customerId=<id>` for SALESMAN/ADMIN; customer prices override defaults, and items without a positive price are omitted.
 - Create an order with SALESMAN `POST /api/orders` using `{ clientRef?, customerId, notes?, lines: [{ itemId, qty }] }`; prices are resolved server-side, and retrying a supplied `clientRef` returns the existing order.
@@ -17,6 +18,7 @@ Step 30 - Payments
 - Preview GST with `GET /api/orders/:id/invoice-preview` (ADMIN/ACCOUNTANT/OWNER); only SUBMITTED/APPROVED orders are previewable. Tax is rounded per line and summed; preview does not create invoices or consume numbers.
 - Create an invoice from an APPROVED order with `POST /api/invoices` (ADMIN); read/filter invoices with `GET /api/invoices` and `GET /api/invoices/:id` (ADMIN/ACCOUNTANT/OWNER). Posted invoices snapshot seller/buyer/order and line tax data; the database blocks invoice deletes, line edits, and changes to posted invoice fields.
 - Dispatch an invoice with `POST /api/dispatches` (ADMIN), optionally providing partial `lines`; omitted lines dispatch all remaining quantities. Read dispatches with `GET /api/dispatches` and `GET /api/dispatches/:id` (ADMIN/ACCOUNTANT/OWNER), and check invoice quantities with `GET /api/invoices/:id/dispatch-status`.
+- Payments: `POST /api/payments` (ADMIN) records an invoice-linked or unallocated payment; `GET /api/payments?customerId=&invoiceId=&mode=&from=&to=&page=&limit=`, `GET /api/payments/outstanding`, and `GET /api/payments/outstanding/:customerId` (ADMIN/ACCOUNTANT/OWNER). Date filters use inclusive IST days.
 - Stock readers can use `GET /api/stock/finished-availability` for reservation/free totals; non-salesman responses include `reservedPackets` and `freePackets`, while salesman response fields stay backward-compatible.
 - Start API/UI in separate terminals: `npm run dev:backend` and `npm run dev:frontend`.
 - Prisma commands from `backend/`: `npx prisma format`, `npx prisma validate`, `npx prisma migrate dev`, `npx prisma migrate status`.
@@ -45,7 +47,7 @@ Step 30 - Payments
 15-16 [x]: BOM CRUD/versioning/cloning; planned-consumption calculator.
 17-21 [x] production start/issues, completion/output/scrap, variance/tolerance, run history/edit/cancel, API benchmark steps 1-3.
 ### Phase 4 - Sales loop
-22 [x] customer/default price resolution and salesman catalog; 23 [x] order creation with idempotent clientRef; 24 [x] role-scoped order lists/details, status timeline, and salesman customer sales; 25 [x] finished-goods availability, reservations, and shortage checks; 26 [x] admin order edit/approve/reject/cancel; 27 [x] per-line GST calculator and order invoice preview; 28 [x] immutable GST invoices; 29 [x] dispatch; 30-33 [ ] payments; credit notes; shortage flow; benchmark steps 4-7.
+22 [x] customer/default price resolution and salesman catalog; 23 [x] order creation with idempotent clientRef; 24 [x] role-scoped order lists/details, status timeline, and salesman customer sales; 25 [x] finished-goods availability, reservations, and shortage checks; 26 [x] admin order edit/approve/reject/cancel; 27 [x] per-line GST calculator and order invoice preview; 28 [x] immutable GST invoices; 29 [x] dispatch; 30 [x] payments and customer outstanding; 31-33 [ ] credit notes; shortage flow; benchmark steps 4-7.
 ### Phase 5 - Costing
 34-36 [ ] weighted average; overhead allocation; packet cost/margin.
 ### Phase 6 - Reports and PDF
@@ -56,6 +58,7 @@ Step 30 - Payments
 57-60 [ ] full benchmark/fixes; deployment; README/design note; demo/interview/final audit.
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
+- Step 30 (2026-11-26): Added integer outstanding helpers, transactional receipt creation with customer/invoice locks and audit, outstanding/payment reads, IST filtering, RBAC, and API/unit coverage. Files: payment/outstanding services and routes, app/permissions, new tests, and this log. `npm test` passes (180; baseline 169). Decisions: reject overpayment, subtract all customer payments from posted invoices, count payments linked to cancelled invoices as customer credit; payment reversal is deferred.
 - Step 29 (2026-11-25): Added transactional full/partial dispatch, invoice and item locks, reservation guard, ledger movements, audit/order status updates, dispatch reads, and invoice dispatch status. Files: dispatch service/route, invoice route, app/permissions, new dispatch tests, and this log. `npm test` passes (169; baseline 161), including 8 new tests. Decisions: dispatch is the sales stock-out point; DISPATCH ledger rows carry no rate; an order becomes DISPATCHED only when its invoice is fully dispatched.
 - Step 28 (2026-11-25): Added transactional invoice creation from approved orders, FY numbering, seller/buyer/order and line snapshots, immutable DB triggers, filtered list/detail APIs, and order timeline audit. Files: schema/migration, invoice service/route, app mount, new invoice tests, data model, and this log. `npm test` passes (161; baseline 152), including 9 new tests; migration deployed to `oda_test`. Decision: invoice and invoice-line records are immutable except one invoice cancellation update; invoice creation does not change stock.
 - Step 27 (2026-11-25): Added pure integer invoice math, seller settings lookup, effective-order GST drafts, and the role-gated invoice preview. Files: invoice math/service, additive order route, new unit/integration tests, and this log. `npm test` passes (152; baseline 140), including 12 new tests. Decision: calculate and round tax per line, then sum tax components; no round-off line.
@@ -92,10 +95,10 @@ Step 30 - Payments
 - `backend/prisma/`: schema, invoice snapshot/immutability migration, append-only ledger and stock-adjustment migrations, and idempotent benchmark seed.
 - `backend/scripts/`: guarded reset/reseed, balance output, staged benchmark checker, and API-only benchmark playback.
 - `backend/src/config/`, `middleware/`: role/capability matrix, auth, validation, and centralized error handling.
-- `backend/src/lib/`: Decimal money/GST/invoice/units/variance/BOM/pricing/order/shortage math, order transitions, IST date ranges, FY, states, errors, audit, and async helpers.
-- `backend/src/routes/`: health, auth, audit, stock/adjustments/finished availability, purchases, BOMs, production, catalog, orders and invoice preview, immutable invoice create/read and dispatch status, dispatches, items, customers/prices, suppliers, settings, and users.
-- `backend/src/services/`: auth, append-only ledger, stock/availability, adjustment, purchase/costing/pricing/order workflows, GST drafts, invoice and dispatch workflows, BOM, production-run start/completion/variance/history/cancellation, master data, settings, and user logic.
-- `backend/tests/`: API/unit suites including benchmark, pricing, catalog, order workflows, GST previews/invoice math, invoice creation/immutability, dispatch, order transitions/math, shortage math, and IST date coverage; `helpers/db.js` and setup guard test operations to `oda_test`.
+- `backend/src/lib/`: Decimal money/GST/invoice/units/variance/BOM/pricing/order/shortage/outstanding math, order transitions, IST date ranges, FY, states, errors, audit, and async helpers.
+- `backend/src/routes/`: health, auth, audit, stock/adjustments/finished availability, purchases, BOMs, production, catalog, orders and invoice preview, invoice create/read and dispatch status, dispatches, payments/outstanding, items, customers/prices, suppliers, settings, and users.
+- `backend/src/services/`: auth, append-only ledger, stock/availability, adjustment, purchase/costing/pricing/order workflows, GST drafts, invoice, dispatch, payment/outstanding workflows, BOM, production-run start/completion/variance/history/cancellation, master data, settings, and user logic.
+- `backend/tests/`: API/unit suites including benchmark, pricing, catalog, order workflows, GST previews/invoice math, invoice creation/immutability, dispatch, payment/outstanding, order transitions/math, shortage math, and IST date coverage; `helpers/db.js` and setup guard test operations to `oda_test`.
 - `frontend/`: Vite/React UI, Tailwind, API client, and `/api` proxy.
 
 ## API endpoints (METHOD path - roles - purpose)
@@ -140,6 +143,8 @@ Step 30 - Payments
 - Finished-goods stock is reduced for sales only at dispatch through `ledgerService.addMovement`; DISPATCH ledger rows have no rate because production cost is stored on the run.
 - Dispatch locks invoice and item rows and checks free stock after reservations for other approved/invoiced orders; invoice quantities are never modified.
 - An order becomes DISPATCHED only after every line on its invoice has been dispatched; partial dispatch keeps it INVOICED.
+- Customer outstanding is `max(0, posted invoice totals - all customer payments)`; the negative difference is reported as credit. Overpayments are rejected, and an unallocated payment reduces customer-wide outstanding but cannot be an advance beyond the amount owed.
+- Payments linked to a subsequently cancelled invoice remain in customer-wide paid totals and are reported as unallocated credit. The v1 payment API has no edit, delete, or reversal operation.
 
 ## Assumptions (copy into README at the end)
 - Project source and project guidance live at the Git repository root.
@@ -153,7 +158,7 @@ Step 30 - Payments
 
 ## Known issues / TODO
 - Order approval blocks on stock shortage with no force option; invoiced/dispatched cancellation remains unavailable until the credit-note flow.
-- Invoice cancellation and related credit-note workflow remain Step 31.
+- Payment edit, delete, and reversal are not available in v1; correction requires a future credit/adjustment workflow.
 - `npm install` reported 13 backend and 4 frontend dependency audit findings; review before deployment.
 - No refresh-token or logout endpoint yet; access tokens expire after 12 hours, and deactivated or deleted accounts are rejected on each request.
 - No Step 05-specific known issues.
