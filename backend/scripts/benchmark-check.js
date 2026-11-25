@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { getAverageRate } from '../src/services/costingService.js';
 import { getBalances } from '../src/services/ledgerService.js';
+import { getShortageSummary } from '../src/services/availabilityService.js';
 import { formatQty } from '../src/lib/units.js';
 import { computeRunVariance } from '../src/services/varianceService.js';
 
@@ -59,11 +60,31 @@ const EXPECTED = {
     documents: {
       postedInvoices: 1,
       dispatches: 1
+    },
+    retailInvoice: {
+      invoiceNo: 'INV/<FY>/0001',
+      totalPaise: 787500,
+      cgstPaise: 18750,
+      sgstPaise: 18750,
+      igstPaise: 0,
+      orderStatus: 'DISPATCHED'
     }
   },
   final: {
     stock: { MURUKKU200: '88 packet' },
     documents: { payments: 1 },
+    retailOutstanding: {
+      invoicedPaise: 787500,
+      paidPaise: 400000,
+      outstandingPaise: 387500
+    },
+    distributorShortage: {
+      invoiceCount: 0,
+      orderStatus: 'SUBMITTED',
+      orderQty: 120,
+      free: 88,
+      shortBy: 32
+    },
     varianceChecks: [
       { name: 'yield variance -6.00% flagged', target: 'yield', expected: { bp: -600, pct: '-6.00', flagged: true } },
       { name: 'oil variance +5.00% flagged', itemCode: 'OIL', expected: { bp: 500, pct: '5.00', flagged: true } },
@@ -248,6 +269,108 @@ const checks = Object.entries(EXPECTED).flatMap(([stage, expectations]) => [
   }))
 ]);
 
+checks.push(
+  {
+    name: 'Retailer A invoice totals 787500 paise with CGST/SGST 18750 and order DISPATCHED',
+    kind: 'document',
+    stage: 'after-dispatch',
+    expected: JSON.stringify(EXPECTED['after-dispatch'].retailInvoice),
+    actualFn: async (db) => {
+      const invoice = await db.invoice.findFirst({
+        where: {
+          status: 'POSTED',
+          customer: { name: 'Retailer A' }
+        },
+        orderBy: { id: 'asc' },
+        include: { order: { select: { status: true } } }
+      });
+      if (!invoice || !/^INV\/\d{4}-\d{2}\/0001$/.test(invoice.invoiceNo)) {
+        return null;
+      }
+      return JSON.stringify({
+        invoiceNo: invoice.invoiceNo.replace(/^INV\/\d{4}-\d{2}/, 'INV/<FY>'),
+        totalPaise: invoice.totalPaise,
+        cgstPaise: invoice.cgstPaise,
+        sgstPaise: invoice.sgstPaise,
+        igstPaise: invoice.igstPaise,
+        orderStatus: invoice.order?.status
+      });
+    }
+  },
+  {
+    name: 'Retailer A outstanding is Rs 3,875.00',
+    kind: 'document',
+    stage: 'final',
+    expected: JSON.stringify(EXPECTED.final.retailOutstanding),
+    actualFn: async (db) => {
+      const customer = await db.customer.findFirst({
+        where: { name: 'Retailer A' },
+        select: { id: true }
+      });
+      if (!customer) {
+        return null;
+      }
+      const [invoices, payments] = await Promise.all([
+        db.invoice.aggregate({
+          where: { customerId: customer.id, status: 'POSTED' },
+          _sum: { totalPaise: true }
+        }),
+        db.payment.aggregate({
+          where: { customerId: customer.id },
+          _sum: { amountPaise: true }
+        })
+      ]);
+      const invoicedPaise = invoices._sum.totalPaise ?? 0;
+      const paidPaise = payments._sum.amountPaise ?? 0;
+      return JSON.stringify({
+        invoicedPaise,
+        paidPaise,
+        outstandingPaise: Math.max(0, invoicedPaise - paidPaise)
+      });
+    }
+  },
+  {
+    name: 'Distributor B has no invoice and a 32-packet shortage against 88 free',
+    kind: 'document',
+    stage: 'final',
+    expected: JSON.stringify(EXPECTED.final.distributorShortage),
+    actualFn: async (db) => {
+      const customer = await db.customer.findFirst({
+        where: { name: 'Distributor B' },
+        select: { id: true }
+      });
+      const item = await db.item.findUnique({
+        where: { code: 'MURUKKU200' },
+        select: { id: true }
+      });
+      if (!customer || !item) {
+        return null;
+      }
+      const [invoiceCount, order, shortages] = await Promise.all([
+        db.invoice.count({ where: { customerId: customer.id } }),
+        db.order.findFirst({
+          where: { customerId: customer.id },
+          orderBy: { id: 'desc' },
+          include: { lines: { where: { itemId: item.id } } }
+        }),
+        getShortageSummary(db)
+      ]);
+      const shortageItem = shortages.items.find(({ itemId }) => itemId === item.id);
+      const shortageOrder = shortageItem?.orders.find(({ orderId }) => orderId === order?.id);
+      if (!shortageOrder) {
+        return null;
+      }
+      return JSON.stringify({
+        invoiceCount,
+        orderStatus: order.status,
+        orderQty: shortageOrder.qty,
+        free: shortageItem.free,
+        shortBy: shortageOrder.shortBy
+      });
+    }
+  }
+);
+
 checks.push(...['opening', 'after-purchase', 'after-issue', 'after-run'].map((stage) => ({
   name: 'ledger reconciles: SUM(qtyChange) per item equals the displayed balance',
   kind: 'document',
@@ -295,6 +418,7 @@ async function main() {
   const prisma = new PrismaClient();
   let failures = 0;
   let passed = 0;
+  let info = 0;
   let skipped = 0;
 
   try {
@@ -321,6 +445,8 @@ async function main() {
           : actual === check.expected ? 'PASS' : 'FAIL';
         if (status === 'PASS') {
           passed += 1;
+        } else if (status === 'INFO') {
+          info += 1;
         } else {
           failures += 1;
         }
@@ -345,7 +471,7 @@ async function main() {
 
     console.log(`Benchmark stage: ${stage}`);
     console.table(results);
-    console.log(`PASS: ${passed} | FAIL: ${failures} | SKIPPED: ${skipped}`);
+    console.log(`PASS: ${passed} | FAIL: ${failures} | INFO: ${info} | SKIPPED: ${skipped}`);
     if (failures > 0) {
       process.exitCode = 1;
     }

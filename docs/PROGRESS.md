@@ -2,7 +2,7 @@
 Last updated: 2026-11-26 by Copilot
 
 ## Next Step
-Step 33 - Automated benchmark test: sales loop steps 4 to 7
+Step 34 - Weighted average costing
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install`; start/stop PostgreSQL on port 5433 with `npm run db:up` / `npm run db:down`.
@@ -11,7 +11,7 @@ Step 33 - Automated benchmark test: sales loop steps 4 to 7
 - Payments verification: from `backend/`, run `npm test -- tests/outstanding.test.js tests/payments.test.js`.
 - Credit-note verification: from `backend/`, run `npm test -- tests/creditNote.test.js`.
 - Shortage verification: from `backend/`, run `npm test -- tests/planning.test.js tests/shortage.flow.test.js`.
-- Run the API benchmark from `backend/` after `npm run seed:reset` with the API running: `npm run bench:play` (optional `-- --upto=1|2|3`, `API_URL` overrides the default); then run `npm run bench:check -- --stage=after-run`.
+- Run the API benchmark from `backend/` after `npm run seed:reset` with the API running: `npm run bench:play` (defaults through step 7; optional `-- --upto=1` through `--upto=7`, `API_URL` overrides the default). The script prints the exact checker command; full playback ends with `npm run bench:check -- --stage=final`.
 - Order catalog: authenticated `GET /api/catalog/order-items?customerId=<id>` for SALESMAN/ADMIN; customer prices override defaults, and items without a positive price are omitted.
 - Create an order with SALESMAN `POST /api/orders` using `{ clientRef?, customerId, notes?, lines: [{ itemId, qty }] }`; prices are resolved server-side, and retrying a supplied `clientRef` returns the existing order.
 - Read orders with `GET /api/orders` (salesmen see only their own; ADMIN/OWNER/ACCOUNTANT see all) and `GET /api/orders/:id`; `GET /api/orders/my/customer-sales` is SALESMAN-only. `from`/`to` use inclusive IST calendar dates.
@@ -26,7 +26,7 @@ Step 33 - Automated benchmark test: sales loop steps 4 to 7
 - Start API/UI in separate terminals: `npm run dev:backend` and `npm run dev:frontend`.
 - Prisma commands from `backend/`: `npx prisma format`, `npx prisma validate`, `npx prisma migrate dev`, `npx prisma migrate status`.
 - Seed with `npm run seed`; reset/reseed (destructive; production is refused) with `npm run seed:reset`; print ledger balances with `npm run balances`.
-- Run benchmarks from `backend/`: `npm run bench:check -- --stage=opening`; available stages: `after-purchase`, `after-issue`, `after-run`, `after-dispatch`, `final`.
+- Run checks from `backend/`: `npm run bench:check -- --stage=opening`; accepted stages: `opening`, `after-purchase`, `after-issue`, `after-run`, `after-dispatch`, `final`. Verify dispatch with `--stage=after-dispatch` and payment/shortage with `--stage=final`.
 - Purchase receipts use PRODUCTION/ADMIN and decimal-string qty/rates; check with `npm run bench:check -- --stage=after-purchase`. Adjustments use ADMIN/PRODUCTION with positive qty and IN/OUT direction.
 - Numbering tests: `npm test -- tests/lib/fy.test.js tests/numberingService.test.js`. Call `nextNumber(tx, 'INV', date)` inside the document transaction to avoid burning numbers on rollback.
 - Demo password is `Demo@123` for `admin@demo.com`, `production@demo.com`, `salesman.a@demo.com`, `salesman.b@demo.com`, `accountant@demo.com`, and `owner@demo.com`. Login at `POST /api/auth/login` and use the token as `Authorization: Bearer <token>`.
@@ -50,7 +50,7 @@ Step 33 - Automated benchmark test: sales loop steps 4 to 7
 15-16 [x]: BOM CRUD/versioning/cloning; planned-consumption calculator.
 17-21 [x] production start/issues, completion/output/scrap, variance/tolerance, run history/edit/cancel, API benchmark steps 1-3.
 ### Phase 4 - Sales loop
-22 [x] customer/default price resolution and salesman catalog; 23 [x] order creation with idempotent clientRef; 24 [x] role-scoped order lists/details, status timeline, and salesman customer sales; 25 [x] finished-goods availability, reservations, and shortage checks; 26 [x] admin order edit/approve/reject/cancel; 27 [x] per-line GST calculator and order invoice preview; 28 [x] immutable GST invoices; 29 [x] dispatch; 30 [x] payments and customer outstanding; 31 [x] invoice cancellation and credit notes; 32 [x] shortage planning/FIFO/IGST proof; 33 [ ] sales-loop benchmark steps 4-7.
+22 [x] customer/default price resolution and salesman catalog; 23 [x] order creation with idempotent clientRef; 24 [x] role-scoped order lists/details, status timeline, and salesman customer sales; 25 [x] finished-goods availability, reservations, and shortage checks; 26 [x] admin order edit/approve/reject/cancel; 27 [x] per-line GST calculator and order invoice preview; 28 [x] immutable GST invoices; 29 [x] dispatch; 30 [x] payments and customer outstanding; 31 [x] invoice cancellation and credit notes; 32 [x] shortage planning/FIFO/IGST proof; 33 [x] API benchmark steps 4-7.
 ### Phase 5 - Costing
 34-36 [ ] weighted average; overhead allocation; packet cost/margin.
 ### Phase 6 - Reports and PDF
@@ -61,6 +61,7 @@ Step 33 - Automated benchmark test: sales loop steps 4 to 7
 57-60 [ ] full benchmark/fixes; deployment; README/design note; demo/interview/final audit.
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
+- Step 33 (2026-11-26): Added the public-API benchmark helper and ordered steps 4-7 test; extended playback through payments and checker proofs for dispatch, outstanding, and Distributor B's shortage. Files: new benchmark flow/test, additive playback/checker changes, and this log. `npm test` passes (204; baseline 199); live playback passes, after-dispatch checker 14 PASS/0 FAIL, final checker 21 PASS/0 FAIL, `--upto=3` and the non-fresh guard verified. Decisions: Vitest already serializes files; use the real invoice-preview API for IGST and preserve Step 26's 409 shortage behavior. Applied the pending additive invoice-snapshot migration to the dev DB before live playback.
 - Step 32 (2026-11-26): Added integer FIFO allocation and batch planning, a grouped finished-goods shortage summary, the role-gated orders shortage endpoint, and API/unit coverage. Files: planning helper, additive availability/orders changes, new tests, and this log. `npm test` passes (199; baseline 189). Decisions: preserve actual Step 26 full-approval response (409 `INSUFFICIENT_STOCK`, availability details include `shortBy`); reduced approvals and reasoned rejection work. FIFO applies to SUBMITTED orders; suggested batches use the highest-version active BOM.
 - Step 31 (2026-11-26): Added atomic full-invoice cancellation, mirrored credit notes, returned dispatched quantities through the stock ledger, preserved payment credit, and added credit-note reads and API/unit coverage. Files: credit-note service/route, additive invoice route/app changes, new tests, and this log. `npm test` passes (189; baseline 180). Decisions: order is cancelled and cannot be invoiced again; goods are assumed returned and saleable; Step 39 GST summaries must subtract credit notes.
 - Step 30 (2026-11-26): Added integer outstanding helpers, transactional receipt creation with customer/invoice locks and audit, outstanding/payment reads, IST filtering, RBAC, and API/unit coverage. Files: payment/outstanding services and routes, app/permissions, new tests, and this log. `npm test` passes (180; baseline 169). Decisions: reject overpayment, subtract all customer payments from posted invoices, count payments linked to cancelled invoices as customer credit; payment reversal is deferred.
@@ -98,12 +99,12 @@ Step 33 - Automated benchmark test: sales loop steps 4 to 7
 - Root: `AGENTS.md`, `package.json`, `.gitignore`, `docker-compose.yml` - project rules, scripts, ignores, and Postgres.
 - `docs/`: AI context, progress, step prompts, and Mermaid data model.
 - `backend/prisma/`: schema, invoice snapshot/immutability migration, append-only ledger and stock-adjustment migrations, and idempotent benchmark seed.
-- `backend/scripts/`: guarded reset/reseed, balance output, staged benchmark checker, and API-only benchmark playback.
+- `backend/scripts/`: guarded reset/reseed, balance output, staged checker including dispatch/outstanding/shortage proofs, and API-only benchmark playback through steps 1-7.
 - `backend/src/config/`, `middleware/`: role/capability matrix, auth, validation, and centralized error handling.
 - `backend/src/lib/`: Decimal money/GST/invoice/units/variance/BOM/pricing/order/shortage/planning/outstanding math, order transitions, IST date ranges, FY, states, errors, audit, and async helpers.
 - `backend/src/routes/`: health, auth, audit, stock/adjustments/finished availability, purchases, BOMs, production, catalog, orders/invoice preview/shortage list, invoice create/read/cancel and dispatch status, credit notes, dispatches, payments/outstanding, items, customers/prices, suppliers, settings, and users.
 - `backend/src/services/`: auth, append-only ledger, stock/availability/shortage planning, adjustment, purchase/costing/pricing/order workflows, GST drafts, invoice/dispatch/credit-note/payment workflows, BOM, production-run start/completion/variance/history/cancellation, master data, settings, and user logic.
-- `backend/tests/`: API/unit suites including benchmark, pricing, catalog, order workflows, GST previews/invoice math, invoice creation/immutability/cancellation, credit notes, dispatch, payment/outstanding, shortage planning/flow, order transitions/math, and IST date coverage; `helpers/db.js` and setup guard test operations to `oda_test`.
+- `backend/tests/`: API/unit suites including benchmark parts 1-2, the `benchmarkFlow.js` helper, pricing, catalog, order workflows, GST previews/invoice math, invoice creation/immutability/cancellation, credit notes, dispatch, payment/outstanding, shortage planning/flow, order transitions/math, and IST date coverage; `helpers/db.js` and setup guard test operations to `oda_test`.
 - `frontend/`: Vite/React UI, Tailwind, API client, and `/api` proxy.
 
 ## API endpoints (METHOD path - roles - purpose)
@@ -155,6 +156,7 @@ Step 33 - Automated benchmark test: sales loop steps 4 to 7
 - Full invoice cancellation creates one credit note, changes only invoice status/cancellation fields, cancels the linked order, and appends positive SALES_RETURN movements for goods assumed to be physically returned and saleable. The unique `Invoice.orderId` means the order cannot be re-invoiced; create a new order instead. Step 39 GST summaries must subtract credit notes.
 - Step 32 read-only audit: full approval beyond free stock is rejected by Step 26 as HTTP 409 `INSUFFICIENT_STOCK` (not the prompt's 422), with `availability` details including line `shortBy`; do not change this established behavior. Reduced `approvedQty` is allowed if covered and an admin can reject with a reason. Invoice creation copies the GST draft: seller state 33 and Distributor B state 29 produce `isInterState: true`, place of supply 29, IGST only; Retailer A state 33 remains CGST/SGST.
 - Submitted finished-goods orders compete for free inventory FIFO; approved/invoiced quantities are reserved. A shortage is addressed by approving a reduced quantity, rejecting, waiting for production, or creating a new backorder order. Suggested batches use the highest-version active BOM. The adjustment API's real reason enum uses `OTHER`; explanatory text is submitted as `note`.
+- Step 33 confirms the seeded benchmark uses public endpoints for order, invoice, dispatch, shortage, and payment; the full Distributor B order remains SUBMITTED, and the checker uses `after-dispatch` and `final` (not separate invoice/shortage/payment stage names). Existing Vitest `fileParallelism: false` protects the shared `oda_test` DB, so its config was unchanged.
 
 ## Assumptions (copy into README at the end)
 - Project source and project guidance live at the Git repository root.
@@ -187,16 +189,16 @@ Step 33 - Automated benchmark test: sales loop steps 4 to 7
 - Explicit `bomId` can start a run from that BOM version; `finishedItemId` resolves the active BOM.
 - Test DB reset timeout raised for slow Windows/Docker.
 - `bench:play` requires a fresh seed (100 kg flour and no production runs); rerunning it against a used benchmark database is intentionally refused.
+- `seed:reset` does not apply pending migrations; deploy migrations before live benchmark playback when the target schema is behind.
 - The salesman catalog intentionally omits active finished goods with no positive customer-specific or default price.
 - Order retries are deduplicated only when the client supplies a valid `clientRef`.
 - No Step 29-specific dispatch issues are known.
 - Finished-stock availability retains its legacy `availablePackets` behavior; use the explicit `reservedPackets` and `freePackets` fields for those values in non-SALESMAN responses.
 
 ## Benchmark status (stage: PASS/FAIL/SKIPPED)
-opening PASS; after-purchase PASS; after-issue PASS; after-run PASS (latest: 16 PASS, 0 FAIL, 24 SKIPPED; all four ledger-reconciliation stage assertions PASS)
-variance PASS (yield -600 bp and oil +500 bp flagged; flour/spice 0 bp, pouches -300 bp not flagged, cartons -1000 bp flagged)
-sales stages SKIPPED
+opening PASS; after-purchase PASS; after-issue PASS; after-run PASS; variance PASS
+after-dispatch PASS (14 PASS, 0 FAIL); invoice PASS; shortage PASS; payment PASS (final: 21 PASS, 0 FAIL, 2 informational, 20 SKIPPED)
+costing and reports SKIPPED
 
-## Day 1 checkpoint
-Steps 01-21 done. Run `npm run bench:play` from `backend/` against a fresh seed, then `npm run bench:check -- --stage=after-run`.
-Current PASS rows: purchase receipt (60 kg at Rs 45/kg), flour weighted-average rate (4.3125), purchases count (1), started runs count (1); after-run balances flour 120 kg, oil 19.5 l, spice 3.8 kg, pouches 306 pcs, cartons 21 pcs, finished goods 238 packets; completed run with 188 good packets and material cost 405500 paise.
+## Benchmark checkpoint
+Steps 01-33 done. From `backend/`, reset with `npm run seed:reset`, start the API, run `npm run bench:play`, then run the printed checker command (`--stage=final` for the full loop). Current proof: Retailer A invoice 787500 paise, payment 400000 paise, outstanding 387500 paise; Distributor B has no invoice and is short 32 packets against 88 free.
