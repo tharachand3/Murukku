@@ -12,7 +12,10 @@ import {
 import { requireAnyCapability } from '../middleware/auth.js';
 import { isValidIstDate } from '../lib/istDate.js';
 import { prisma } from '../lib/prisma.js';
-import { checkOrderAvailability } from '../services/availabilityService.js';
+import {
+  checkOrderAvailability,
+  getShortageSummary
+} from '../services/availabilityService.js';
 import {
   approveOrder,
   cancelOrder,
@@ -128,6 +131,15 @@ router.get(
   validate({ query: customerSalesQuerySchema }),
   asyncHandler(async (req, res) => {
     res.json(await listCustomerSales(prisma, req.user, req.query));
+  })
+);
+
+router.get(
+  '/shortages',
+  authenticate,
+  requireCapability('orders:availability'),
+  asyncHandler(async (_req, res) => {
+    res.json(await getShortageSummary(prisma));
   })
 );
 

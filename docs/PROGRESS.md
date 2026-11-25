@@ -2,7 +2,7 @@
 Last updated: 2026-11-26 by Copilot
 
 ## Next Step
-Step 32 - Shortage flow
+Step 33 - Automated benchmark test: sales loop steps 4 to 7
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install`; start/stop PostgreSQL on port 5433 with `npm run db:up` / `npm run db:down`.
@@ -10,11 +10,13 @@ Step 32 - Shortage flow
 - Run backend tests from `backend/`: `npm test`. Build the frontend with `npm --prefix frontend run build`.
 - Payments verification: from `backend/`, run `npm test -- tests/outstanding.test.js tests/payments.test.js`.
 - Credit-note verification: from `backend/`, run `npm test -- tests/creditNote.test.js`.
+- Shortage verification: from `backend/`, run `npm test -- tests/planning.test.js tests/shortage.flow.test.js`.
 - Run the API benchmark from `backend/` after `npm run seed:reset` with the API running: `npm run bench:play` (optional `-- --upto=1|2|3`, `API_URL` overrides the default); then run `npm run bench:check -- --stage=after-run`.
 - Order catalog: authenticated `GET /api/catalog/order-items?customerId=<id>` for SALESMAN/ADMIN; customer prices override defaults, and items without a positive price are omitted.
 - Create an order with SALESMAN `POST /api/orders` using `{ clientRef?, customerId, notes?, lines: [{ itemId, qty }] }`; prices are resolved server-side, and retrying a supplied `clientRef` returns the existing order.
 - Read orders with `GET /api/orders` (salesmen see only their own; ADMIN/OWNER/ACCOUNTANT see all) and `GET /api/orders/:id`; `GET /api/orders/my/customer-sales` is SALESMAN-only. `from`/`to` use inclusive IST calendar dates.
 - Check stock before approval with `GET /api/orders/:id/availability` (ADMIN/OWNER). Approved/invoiced undispatched quantities are reserved; partial dispatch reduces both on-hand and reservation.
+- Review production shortages with `GET /api/orders/shortages` (ADMIN/OWNER); it groups submitted finished-goods demand, allocates free stock FIFO, and suggests batches from the latest active BOM.
 - Admin order changes require `orders:approve`: `PATCH /api/orders/:id/lines`, `POST /api/orders/:id/approve`, `POST /api/orders/:id/reject`, and `POST /api/orders/:id/cancel`. Approval freezes effective quantities/prices and requires enough unreserved stock; partial approval is allowed, and manual cancellation is limited to SUBMITTED/APPROVED.
 - Preview GST with `GET /api/orders/:id/invoice-preview` (ADMIN/ACCOUNTANT/OWNER); only SUBMITTED/APPROVED orders are previewable. Tax is rounded per line and summed; preview does not create invoices or consume numbers.
 - Create an invoice from an APPROVED order with `POST /api/invoices` (ADMIN); read/filter invoices with `GET /api/invoices` and `GET /api/invoices/:id` (ADMIN/ACCOUNTANT/OWNER). Posted invoices snapshot seller/buyer/order and line tax data; the database blocks invoice deletes, line edits, and changes to posted invoice fields.
@@ -48,7 +50,7 @@ Step 32 - Shortage flow
 15-16 [x]: BOM CRUD/versioning/cloning; planned-consumption calculator.
 17-21 [x] production start/issues, completion/output/scrap, variance/tolerance, run history/edit/cancel, API benchmark steps 1-3.
 ### Phase 4 - Sales loop
-22 [x] customer/default price resolution and salesman catalog; 23 [x] order creation with idempotent clientRef; 24 [x] role-scoped order lists/details, status timeline, and salesman customer sales; 25 [x] finished-goods availability, reservations, and shortage checks; 26 [x] admin order edit/approve/reject/cancel; 27 [x] per-line GST calculator and order invoice preview; 28 [x] immutable GST invoices; 29 [x] dispatch; 30 [x] payments and customer outstanding; 31 [x] invoice cancellation and credit notes; 32-33 [ ] shortage flow; benchmark steps 4-7.
+22 [x] customer/default price resolution and salesman catalog; 23 [x] order creation with idempotent clientRef; 24 [x] role-scoped order lists/details, status timeline, and salesman customer sales; 25 [x] finished-goods availability, reservations, and shortage checks; 26 [x] admin order edit/approve/reject/cancel; 27 [x] per-line GST calculator and order invoice preview; 28 [x] immutable GST invoices; 29 [x] dispatch; 30 [x] payments and customer outstanding; 31 [x] invoice cancellation and credit notes; 32 [x] shortage planning/FIFO/IGST proof; 33 [ ] sales-loop benchmark steps 4-7.
 ### Phase 5 - Costing
 34-36 [ ] weighted average; overhead allocation; packet cost/margin.
 ### Phase 6 - Reports and PDF
@@ -59,6 +61,7 @@ Step 32 - Shortage flow
 57-60 [ ] full benchmark/fixes; deployment; README/design note; demo/interview/final audit.
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
+- Step 32 (2026-11-26): Added integer FIFO allocation and batch planning, a grouped finished-goods shortage summary, the role-gated orders shortage endpoint, and API/unit coverage. Files: planning helper, additive availability/orders changes, new tests, and this log. `npm test` passes (199; baseline 189). Decisions: preserve actual Step 26 full-approval response (409 `INSUFFICIENT_STOCK`, availability details include `shortBy`); reduced approvals and reasoned rejection work. FIFO applies to SUBMITTED orders; suggested batches use the highest-version active BOM.
 - Step 31 (2026-11-26): Added atomic full-invoice cancellation, mirrored credit notes, returned dispatched quantities through the stock ledger, preserved payment credit, and added credit-note reads and API/unit coverage. Files: credit-note service/route, additive invoice route/app changes, new tests, and this log. `npm test` passes (189; baseline 180). Decisions: order is cancelled and cannot be invoiced again; goods are assumed returned and saleable; Step 39 GST summaries must subtract credit notes.
 - Step 30 (2026-11-26): Added integer outstanding helpers, transactional receipt creation with customer/invoice locks and audit, outstanding/payment reads, IST filtering, RBAC, and API/unit coverage. Files: payment/outstanding services and routes, app/permissions, new tests, and this log. `npm test` passes (180; baseline 169). Decisions: reject overpayment, subtract all customer payments from posted invoices, count payments linked to cancelled invoices as customer credit; payment reversal is deferred.
 - Step 29 (2026-11-25): Added transactional full/partial dispatch, invoice and item locks, reservation guard, ledger movements, audit/order status updates, dispatch reads, and invoice dispatch status. Files: dispatch service/route, invoice route, app/permissions, new dispatch tests, and this log. `npm test` passes (169; baseline 161), including 8 new tests. Decisions: dispatch is the sales stock-out point; DISPATCH ledger rows carry no rate; an order becomes DISPATCHED only when its invoice is fully dispatched.
@@ -97,10 +100,10 @@ Step 32 - Shortage flow
 - `backend/prisma/`: schema, invoice snapshot/immutability migration, append-only ledger and stock-adjustment migrations, and idempotent benchmark seed.
 - `backend/scripts/`: guarded reset/reseed, balance output, staged benchmark checker, and API-only benchmark playback.
 - `backend/src/config/`, `middleware/`: role/capability matrix, auth, validation, and centralized error handling.
-- `backend/src/lib/`: Decimal money/GST/invoice/units/variance/BOM/pricing/order/shortage/outstanding math, order transitions, IST date ranges, FY, states, errors, audit, and async helpers.
-- `backend/src/routes/`: health, auth, audit, stock/adjustments/finished availability, purchases, BOMs, production, catalog, orders and invoice preview, invoice create/read/cancel and dispatch status, credit notes, dispatches, payments/outstanding, items, customers/prices, suppliers, settings, and users.
-- `backend/src/services/`: auth, append-only ledger, stock/availability, adjustment, purchase/costing/pricing/order workflows, GST drafts, invoice/dispatch/credit-note/payment workflows, BOM, production-run start/completion/variance/history/cancellation, master data, settings, and user logic.
-- `backend/tests/`: API/unit suites including benchmark, pricing, catalog, order workflows, GST previews/invoice math, invoice creation/immutability/cancellation, credit notes, dispatch, payment/outstanding, order transitions/math, shortage math, and IST date coverage; `helpers/db.js` and setup guard test operations to `oda_test`.
+- `backend/src/lib/`: Decimal money/GST/invoice/units/variance/BOM/pricing/order/shortage/planning/outstanding math, order transitions, IST date ranges, FY, states, errors, audit, and async helpers.
+- `backend/src/routes/`: health, auth, audit, stock/adjustments/finished availability, purchases, BOMs, production, catalog, orders/invoice preview/shortage list, invoice create/read/cancel and dispatch status, credit notes, dispatches, payments/outstanding, items, customers/prices, suppliers, settings, and users.
+- `backend/src/services/`: auth, append-only ledger, stock/availability/shortage planning, adjustment, purchase/costing/pricing/order workflows, GST drafts, invoice/dispatch/credit-note/payment workflows, BOM, production-run start/completion/variance/history/cancellation, master data, settings, and user logic.
+- `backend/tests/`: API/unit suites including benchmark, pricing, catalog, order workflows, GST previews/invoice math, invoice creation/immutability/cancellation, credit notes, dispatch, payment/outstanding, shortage planning/flow, order transitions/math, and IST date coverage; `helpers/db.js` and setup guard test operations to `oda_test`.
 - `frontend/`: Vite/React UI, Tailwind, API client, and `/api` proxy.
 
 ## API endpoints (METHOD path - roles - purpose)
@@ -109,7 +112,7 @@ Step 32 - Shortage flow
 - `/api/stock`: `GET /summary?type=`, `/ledger?itemId=&from=&to=`, `/items/:id/balance` ADMIN/PRODUCTION/ACCOUNTANT/OWNER; `GET /finished-availability` also SALESMAN, with reserved/free fields for non-salesman roles; `POST /adjustments` ADMIN/PRODUCTION; `GET /adjustments` stock-read roles.
 - `/api/purchases`: `POST /` PRODUCTION/ADMIN; `GET /?page=&limit=&from=&to=&supplierId=` and `GET /:id` PRODUCTION/ADMIN/ACCOUNTANT/OWNER. Receipts write ledger and audit atomically.
 - `/api/catalog`: `GET /order-items?customerId=` SALESMAN/ADMIN; salesmen can only access assigned customers. Returns priced active finished goods and current packet balances.
-- `/api/orders`: `POST /` SALESMAN creates SUBMITTED orders using server-resolved prices; `GET /?status=&customerId=&salesmanId=&from=&to=&q=&page=&limit=` and `GET /:id` SALESMAN/ADMIN/OWNER/ACCOUNTANT, with salesmen restricted to their own orders; `GET /my/customer-sales?from=&to=` SALESMAN-only; `GET /:id/availability` ADMIN/OWNER; `GET /:id/invoice-preview` ADMIN/ACCOUNTANT/OWNER; `PATCH /:id/lines`, `POST /:id/approve`, `POST /:id/reject`, and `POST /:id/cancel` ADMIN-only. Approval checks unreserved finished stock; preview calculates GST per line without writes.
+- `/api/orders`: `POST /` SALESMAN creates SUBMITTED orders using server-resolved prices; `GET /?status=&customerId=&salesmanId=&from=&to=&q=&page=&limit=` and `GET /:id` SALESMAN/ADMIN/OWNER/ACCOUNTANT, with salesmen restricted to their own orders; `GET /my/customer-sales?from=&to=` SALESMAN-only; `GET /shortages` and `GET /:id/availability` ADMIN/OWNER; `GET /:id/invoice-preview` ADMIN/ACCOUNTANT/OWNER; `PATCH /:id/lines`, `POST /:id/approve`, `POST /:id/reject`, and `POST /:id/cancel` ADMIN-only. Approval checks unreserved finished stock; shortage summary allocates SUBMITTED demand FIFO; preview calculates GST per line without writes.
 - `/api/invoices`: `POST /` ADMIN creates an immutable FY-numbered invoice from an APPROVED order; `GET /?status=&customerId=&from=&to=&q=&page=&limit=` and `GET /:id` ADMIN/ACCOUNTANT/OWNER; `GET /:id/dispatch-status` returns invoiced, dispatched, and remaining quantities.
 - `/api/dispatches`: `POST /` ADMIN creates a full or partial dispatch; `GET /?invoiceId=&customerId=&from=&to=&page=&limit=` and `GET /:id` ADMIN/ACCOUNTANT/OWNER. Dispatch writes negative DISPATCH ledger movements; orders transition to DISPATCHED only when all invoice quantities are sent.
 - `/api/payments`: `POST /` ADMIN records linked or unallocated receipts; `GET /?customerId=&invoiceId=&mode=&from=&to=&page=&limit=`, `GET /outstanding`, and `GET /outstanding/:customerId` ADMIN/ACCOUNTANT/OWNER. Date filters use inclusive IST days.
@@ -150,6 +153,8 @@ Step 32 - Shortage flow
 - Customer outstanding is `max(0, posted invoice totals - all customer payments)`; the negative difference is reported as credit. Overpayments are rejected, and an unallocated payment reduces customer-wide outstanding but cannot be an advance beyond the amount owed.
 - Payments linked to a subsequently cancelled invoice remain in customer-wide paid totals and are reported as unallocated credit. The v1 payment API has no edit, delete, or reversal operation.
 - Full invoice cancellation creates one credit note, changes only invoice status/cancellation fields, cancels the linked order, and appends positive SALES_RETURN movements for goods assumed to be physically returned and saleable. The unique `Invoice.orderId` means the order cannot be re-invoiced; create a new order instead. Step 39 GST summaries must subtract credit notes.
+- Step 32 read-only audit: full approval beyond free stock is rejected by Step 26 as HTTP 409 `INSUFFICIENT_STOCK` (not the prompt's 422), with `availability` details including line `shortBy`; do not change this established behavior. Reduced `approvedQty` is allowed if covered and an admin can reject with a reason. Invoice creation copies the GST draft: seller state 33 and Distributor B state 29 produce `isInterState: true`, place of supply 29, IGST only; Retailer A state 33 remains CGST/SGST.
+- Submitted finished-goods orders compete for free inventory FIFO; approved/invoiced quantities are reserved. A shortage is addressed by approving a reduced quantity, rejecting, waiting for production, or creating a new backorder order. Suggested batches use the highest-version active BOM. The adjustment API's real reason enum uses `OTHER`; explanatory text is submitted as `note`.
 
 ## Assumptions (copy into README at the end)
 - Project source and project guidance live at the Git repository root.
@@ -160,6 +165,7 @@ Step 32 - Shortage flow
 - Customer price PUT accepts `{ prices: [...] }` and upserts only the submitted item prices.
 - BOM PUT preserves existing notes when omitted; clone copies source notes. Clone line overrides apply only to items present after the requested replacements.
 - Plan endpoint requires exactly one mode; issued quantities are interpreted in the selected BOM item's dimension and converted to base units.
+- The main benchmark intentionally leaves Distributor B's shortage order unapproved; a backorder is a new order after production replenishes stock.
 
 ## Known issues / TODO
 - Order approval blocks on stock shortage with no force option.
