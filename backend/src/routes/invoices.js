@@ -11,6 +11,11 @@ import {
   listInvoices
 } from '../services/invoiceService.js';
 import { getInvoiceDispatchStatus } from '../services/dispatchService.js';
+import {
+  cancelInvoice,
+  cancelInvoiceSchema,
+  getCreditNoteForInvoice
+} from '../services/creditNoteService.js';
 
 const router = Router();
 const dateSchema = z.string().refine(
@@ -61,6 +66,16 @@ router.get(
   })
 );
 
+router.post(
+  '/:id/cancel',
+  authenticate,
+  requireCapability('invoices:write'),
+  validate({ params: idParamsSchema, body: cancelInvoiceSchema }),
+  asyncHandler(async (req, res) => {
+    res.json(await cancelInvoice(req.user, req.params.id, req.body));
+  })
+);
+
 router.get(
   '/:id/dispatch-status',
   authenticate,
@@ -77,7 +92,11 @@ router.get(
   requireCapability('invoices:read'),
   validate({ params: idParamsSchema }),
   asyncHandler(async (req, res) => {
-    res.json(await getInvoiceDetails(prisma, req.params.id));
+    const [invoice, creditNote] = await Promise.all([
+      getInvoiceDetails(prisma, req.params.id),
+      getCreditNoteForInvoice(prisma, req.params.id)
+    ]);
+    res.json({ ...invoice, creditNote });
   })
 );
 

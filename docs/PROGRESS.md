@@ -2,13 +2,14 @@
 Last updated: 2026-11-26 by Copilot
 
 ## Next Step
-Step 31 - Cancel invoice with credit note and stock reversal
+Step 32 - Shortage flow
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install`; start/stop PostgreSQL on port 5433 with `npm run db:up` / `npm run db:down`.
 - Create `oda_test` once: `docker compose exec -T db createdb -U oda oda_test`. From `backend/`, set `$env:DATABASE_URL = 'postgresql://oda:oda@localhost:5433/oda_test?schema=public'`, run `npx prisma migrate deploy` and `npx prisma generate`, then `Remove-Item Env:DATABASE_URL`; Vitest refuses non-test databases. Step 28 migration `20261125173751_invoice_snapshot_immutable` is applied to `oda_test`.
 - Run backend tests from `backend/`: `npm test`. Build the frontend with `npm --prefix frontend run build`.
 - Payments verification: from `backend/`, run `npm test -- tests/outstanding.test.js tests/payments.test.js`.
+- Credit-note verification: from `backend/`, run `npm test -- tests/creditNote.test.js`.
 - Run the API benchmark from `backend/` after `npm run seed:reset` with the API running: `npm run bench:play` (optional `-- --upto=1|2|3`, `API_URL` overrides the default); then run `npm run bench:check -- --stage=after-run`.
 - Order catalog: authenticated `GET /api/catalog/order-items?customerId=<id>` for SALESMAN/ADMIN; customer prices override defaults, and items without a positive price are omitted.
 - Create an order with SALESMAN `POST /api/orders` using `{ clientRef?, customerId, notes?, lines: [{ itemId, qty }] }`; prices are resolved server-side, and retrying a supplied `clientRef` returns the existing order.
@@ -47,7 +48,7 @@ Step 31 - Cancel invoice with credit note and stock reversal
 15-16 [x]: BOM CRUD/versioning/cloning; planned-consumption calculator.
 17-21 [x] production start/issues, completion/output/scrap, variance/tolerance, run history/edit/cancel, API benchmark steps 1-3.
 ### Phase 4 - Sales loop
-22 [x] customer/default price resolution and salesman catalog; 23 [x] order creation with idempotent clientRef; 24 [x] role-scoped order lists/details, status timeline, and salesman customer sales; 25 [x] finished-goods availability, reservations, and shortage checks; 26 [x] admin order edit/approve/reject/cancel; 27 [x] per-line GST calculator and order invoice preview; 28 [x] immutable GST invoices; 29 [x] dispatch; 30 [x] payments and customer outstanding; 31-33 [ ] credit notes; shortage flow; benchmark steps 4-7.
+22 [x] customer/default price resolution and salesman catalog; 23 [x] order creation with idempotent clientRef; 24 [x] role-scoped order lists/details, status timeline, and salesman customer sales; 25 [x] finished-goods availability, reservations, and shortage checks; 26 [x] admin order edit/approve/reject/cancel; 27 [x] per-line GST calculator and order invoice preview; 28 [x] immutable GST invoices; 29 [x] dispatch; 30 [x] payments and customer outstanding; 31 [x] invoice cancellation and credit notes; 32-33 [ ] shortage flow; benchmark steps 4-7.
 ### Phase 5 - Costing
 34-36 [ ] weighted average; overhead allocation; packet cost/margin.
 ### Phase 6 - Reports and PDF
@@ -58,6 +59,7 @@ Step 31 - Cancel invoice with credit note and stock reversal
 57-60 [ ] full benchmark/fixes; deployment; README/design note; demo/interview/final audit.
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
+- Step 31 (2026-11-26): Added atomic full-invoice cancellation, mirrored credit notes, returned dispatched quantities through the stock ledger, preserved payment credit, and added credit-note reads and API/unit coverage. Files: credit-note service/route, additive invoice route/app changes, new tests, and this log. `npm test` passes (189; baseline 180). Decisions: order is cancelled and cannot be invoiced again; goods are assumed returned and saleable; Step 39 GST summaries must subtract credit notes.
 - Step 30 (2026-11-26): Added integer outstanding helpers, transactional receipt creation with customer/invoice locks and audit, outstanding/payment reads, IST filtering, RBAC, and API/unit coverage. Files: payment/outstanding services and routes, app/permissions, new tests, and this log. `npm test` passes (180; baseline 169). Decisions: reject overpayment, subtract all customer payments from posted invoices, count payments linked to cancelled invoices as customer credit; payment reversal is deferred.
 - Step 29 (2026-11-25): Added transactional full/partial dispatch, invoice and item locks, reservation guard, ledger movements, audit/order status updates, dispatch reads, and invoice dispatch status. Files: dispatch service/route, invoice route, app/permissions, new dispatch tests, and this log. `npm test` passes (169; baseline 161), including 8 new tests. Decisions: dispatch is the sales stock-out point; DISPATCH ledger rows carry no rate; an order becomes DISPATCHED only when its invoice is fully dispatched.
 - Step 28 (2026-11-25): Added transactional invoice creation from approved orders, FY numbering, seller/buyer/order and line snapshots, immutable DB triggers, filtered list/detail APIs, and order timeline audit. Files: schema/migration, invoice service/route, app mount, new invoice tests, data model, and this log. `npm test` passes (161; baseline 152), including 9 new tests; migration deployed to `oda_test`. Decision: invoice and invoice-line records are immutable except one invoice cancellation update; invoice creation does not change stock.
@@ -96,9 +98,9 @@ Step 31 - Cancel invoice with credit note and stock reversal
 - `backend/scripts/`: guarded reset/reseed, balance output, staged benchmark checker, and API-only benchmark playback.
 - `backend/src/config/`, `middleware/`: role/capability matrix, auth, validation, and centralized error handling.
 - `backend/src/lib/`: Decimal money/GST/invoice/units/variance/BOM/pricing/order/shortage/outstanding math, order transitions, IST date ranges, FY, states, errors, audit, and async helpers.
-- `backend/src/routes/`: health, auth, audit, stock/adjustments/finished availability, purchases, BOMs, production, catalog, orders and invoice preview, invoice create/read and dispatch status, dispatches, payments/outstanding, items, customers/prices, suppliers, settings, and users.
-- `backend/src/services/`: auth, append-only ledger, stock/availability, adjustment, purchase/costing/pricing/order workflows, GST drafts, invoice, dispatch, payment/outstanding workflows, BOM, production-run start/completion/variance/history/cancellation, master data, settings, and user logic.
-- `backend/tests/`: API/unit suites including benchmark, pricing, catalog, order workflows, GST previews/invoice math, invoice creation/immutability, dispatch, payment/outstanding, order transitions/math, shortage math, and IST date coverage; `helpers/db.js` and setup guard test operations to `oda_test`.
+- `backend/src/routes/`: health, auth, audit, stock/adjustments/finished availability, purchases, BOMs, production, catalog, orders and invoice preview, invoice create/read/cancel and dispatch status, credit notes, dispatches, payments/outstanding, items, customers/prices, suppliers, settings, and users.
+- `backend/src/services/`: auth, append-only ledger, stock/availability, adjustment, purchase/costing/pricing/order workflows, GST drafts, invoice/dispatch/credit-note/payment workflows, BOM, production-run start/completion/variance/history/cancellation, master data, settings, and user logic.
+- `backend/tests/`: API/unit suites including benchmark, pricing, catalog, order workflows, GST previews/invoice math, invoice creation/immutability/cancellation, credit notes, dispatch, payment/outstanding, order transitions/math, shortage math, and IST date coverage; `helpers/db.js` and setup guard test operations to `oda_test`.
 - `frontend/`: Vite/React UI, Tailwind, API client, and `/api` proxy.
 
 ## API endpoints (METHOD path - roles - purpose)
@@ -110,6 +112,8 @@ Step 31 - Cancel invoice with credit note and stock reversal
 - `/api/orders`: `POST /` SALESMAN creates SUBMITTED orders using server-resolved prices; `GET /?status=&customerId=&salesmanId=&from=&to=&q=&page=&limit=` and `GET /:id` SALESMAN/ADMIN/OWNER/ACCOUNTANT, with salesmen restricted to their own orders; `GET /my/customer-sales?from=&to=` SALESMAN-only; `GET /:id/availability` ADMIN/OWNER; `GET /:id/invoice-preview` ADMIN/ACCOUNTANT/OWNER; `PATCH /:id/lines`, `POST /:id/approve`, `POST /:id/reject`, and `POST /:id/cancel` ADMIN-only. Approval checks unreserved finished stock; preview calculates GST per line without writes.
 - `/api/invoices`: `POST /` ADMIN creates an immutable FY-numbered invoice from an APPROVED order; `GET /?status=&customerId=&from=&to=&q=&page=&limit=` and `GET /:id` ADMIN/ACCOUNTANT/OWNER; `GET /:id/dispatch-status` returns invoiced, dispatched, and remaining quantities.
 - `/api/dispatches`: `POST /` ADMIN creates a full or partial dispatch; `GET /?invoiceId=&customerId=&from=&to=&page=&limit=` and `GET /:id` ADMIN/ACCOUNTANT/OWNER. Dispatch writes negative DISPATCH ledger movements; orders transition to DISPATCHED only when all invoice quantities are sent.
+- `/api/payments`: `POST /` ADMIN records linked or unallocated receipts; `GET /?customerId=&invoiceId=&mode=&from=&to=&page=&limit=`, `GET /outstanding`, and `GET /outstanding/:customerId` ADMIN/ACCOUNTANT/OWNER. Date filters use inclusive IST days.
+- `/api/credit-notes`: `GET /?customerId=&from=&to=&page=&limit=` and `GET /:id` ADMIN/ACCOUNTANT/OWNER. `POST /api/invoices/:id/cancel` ADMIN creates a full credit note and reverses dispatched stock.
 - `/api/items`: `GET /?type=&active=`, `GET /:id` authenticated; `POST /`, `PATCH /:id` ADMIN.
 - `/api/customers`: `GET /?type=&active=`, `GET /:id`, `GET /:id/prices` authenticated (salesmen assigned customers only); `POST /`, `PATCH /:id`, `PUT /:id/prices` ADMIN.
 - `/api/suppliers`: `GET /?active=`, `GET /:id` authenticated; `POST /`, `PATCH /:id` ADMIN. `/api/settings`: `GET /` authenticated; `PUT /:key` ADMIN.
@@ -145,6 +149,7 @@ Step 31 - Cancel invoice with credit note and stock reversal
 - An order becomes DISPATCHED only after every line on its invoice has been dispatched; partial dispatch keeps it INVOICED.
 - Customer outstanding is `max(0, posted invoice totals - all customer payments)`; the negative difference is reported as credit. Overpayments are rejected, and an unallocated payment reduces customer-wide outstanding but cannot be an advance beyond the amount owed.
 - Payments linked to a subsequently cancelled invoice remain in customer-wide paid totals and are reported as unallocated credit. The v1 payment API has no edit, delete, or reversal operation.
+- Full invoice cancellation creates one credit note, changes only invoice status/cancellation fields, cancels the linked order, and appends positive SALES_RETURN movements for goods assumed to be physically returned and saleable. The unique `Invoice.orderId` means the order cannot be re-invoiced; create a new order instead. Step 39 GST summaries must subtract credit notes.
 
 ## Assumptions (copy into README at the end)
 - Project source and project guidance live at the Git repository root.
@@ -157,8 +162,9 @@ Step 31 - Cancel invoice with credit note and stock reversal
 - Plan endpoint requires exactly one mode; issued quantities are interpreted in the selected BOM item's dimension and converted to base units.
 
 ## Known issues / TODO
-- Order approval blocks on stock shortage with no force option; invoiced/dispatched cancellation remains unavailable until the credit-note flow.
+- Order approval blocks on stock shortage with no force option.
 - Payment edit, delete, and reversal are not available in v1; correction requires a future credit/adjustment workflow.
+- Cancelling a dispatched invoice containing an inactive item currently fails with ledger `addMovement`'s 422 `UNPROCESSABLE_ENTITY` response (the item id is in `details`) and the transaction rolls back.
 - `npm install` reported 13 backend and 4 frontend dependency audit findings; review before deployment.
 - No refresh-token or logout endpoint yet; access tokens expire after 12 hours, and deactivated or deleted accounts are rejected on each request.
 - No Step 05-specific known issues.
