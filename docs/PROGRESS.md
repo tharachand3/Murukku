@@ -2,7 +2,7 @@
 Last updated: 2026-11-25 by Copilot
 
 ## Next Step
-Step 23 - Salesman order creation
+Step 24 - Order review and approval
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install`; start/stop PostgreSQL on port 5433 with `npm run db:up` / `npm run db:down`.
@@ -10,6 +10,7 @@ Step 23 - Salesman order creation
 - Run backend tests from `backend/`: `npm test`. Build the frontend with `npm --prefix frontend run build`.
 - Run the API benchmark from `backend/` after `npm run seed:reset` with the API running: `npm run bench:play` (optional `-- --upto=1|2|3`, `API_URL` overrides the default); then run `npm run bench:check -- --stage=after-run`.
 - Order catalog: authenticated `GET /api/catalog/order-items?customerId=<id>` for SALESMAN/ADMIN; customer prices override defaults, and items without a positive price are omitted.
+- Create an order with SALESMAN `POST /api/orders` using `{ clientRef?, customerId, notes?, lines: [{ itemId, qty }] }`; prices are resolved server-side, and retrying a supplied `clientRef` returns the existing order.
 - Start API/UI in separate terminals: `npm run dev:backend` and `npm run dev:frontend`.
 - Prisma commands from `backend/`: `npx prisma format`, `npx prisma validate`, `npx prisma migrate dev`, `npx prisma migrate status`.
 - Seed with `npm run seed`; reset/reseed (destructive; production is refused) with `npm run seed:reset`; print ledger balances with `npm run balances`.
@@ -37,7 +38,7 @@ Step 23 - Salesman order creation
 15-16 [x]: BOM CRUD/versioning/cloning; planned-consumption calculator.
 17-21 [x] production start/issues, completion/output/scrap, variance/tolerance, run history/edit/cancel, API benchmark steps 1-3.
 ### Phase 4 - Sales loop
-22 [x] customer/default price resolution and salesman catalog; 23-33 [ ] orders; order roles/status; availability; approval; GST; invoicing; dispatch; payments; credit notes; shortage flow; benchmark steps 4-7.
+22 [x] customer/default price resolution and salesman catalog; 23 [x] order creation with idempotent clientRef; 24-33 [ ] order review/approval; availability; GST; invoicing; dispatch; payments; credit notes; shortage flow; benchmark steps 4-7.
 ### Phase 5 - Costing
 34-36 [ ] weighted average; overhead allocation; packet cost/margin.
 ### Phase 6 - Reports and PDF
@@ -48,6 +49,7 @@ Step 23 - Salesman order creation
 57-60 [ ] full benchmark/fixes; deployment; README/design note; demo/interview/final audit.
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
+- Step 23 (2026-11-25): Added strict, server-priced order creation with merged lines, transactional numbering/audit, and clientRef idempotency including concurrent retries; added integer order math. Files: order service/math, route, app mount, new tests, and this log. `npm test` passes (107; baseline 105); live API verified create 201 then same-ref retry 200 with the same order ID. Decision: mobile clients generate a UUID clientRef and retain it until a server response; taxable totals are labeled `taxableTotalPaise` because they exclude GST.
 - Step 22 (2026-11-25): Added positive-paise customer/default price resolution and the role-gated order catalog with assignment checks and live finished-stock balances. Files: pricing helper/service, catalog route, app/permissions, new pricing/catalog tests, and this log. `npm test` passes (105; baseline 103); live API verified Retailer A at Rs 50.00 and an unassigned Distributor B request at 404. Decision: customer prices override defaults only when positive; unpriced finished items are omitted.
 - Step 21 (2026-11-25): Added a seeded HTTP integration benchmark for purchase, issue, completion, variance, cost, audit, traceability, role access, and stock reconciliation; added `bench:play` and four staged ledger-reconciliation checks. Files: benchmark helper/test/playback/checker, backend package script, and this log. `npm test` passes (103); live playback and `after-run` check pass (16 PASS, 0 FAIL), and replay on the non-fresh database refuses as expected. Decision: reused `prisma/seed.js`, then set test demo password hashes to bcrypt cost 4; existing Vitest file serialization needed no change. The raw append-only UPDATE guard remains covered by the ledger service test.
 - Step 20 (2026-11-25): Added filtered/paginated run history, detail with ledger/audit trail, audited notes/batch edits, and transactional cancellation with positive ledger reversals. Files: production service/routes/tests and this log. `npm test` passes (100); `npm run bench:check -- --stage=after-run` passes (12 checks). Decision: date filters use `startedAt`; completed runs require stock adjustments for correction and cannot be cancelled.
@@ -77,10 +79,10 @@ Step 23 - Salesman order creation
 - `backend/prisma/`: schema, migrations (including append-only trigger and stock adjustments), and idempotent benchmark seed.
 - `backend/scripts/`: guarded reset/reseed, balance output, staged benchmark checker, and API-only benchmark playback.
 - `backend/src/config/`, `middleware/`: role/capability matrix, auth, validation, and centralized error handling.
-- `backend/src/lib/`: Decimal money/GST/units/variance/BOM/pricing math, FY, states, errors, audit, and async helpers.
-- `backend/src/routes/`: health, auth, audit, stock/adjustments, purchases, BOMs, production, catalog, items, customers/prices, suppliers, settings, and users.
-- `backend/src/services/`: auth, append-only ledger, stock availability, adjustment, purchase/costing/pricing, BOM, production-run start/completion/variance/history/cancellation, master data, settings, and user logic.
-- `backend/tests/`: API/unit suites including benchmark, pricing and catalog coverage; `helpers/db.js` and setup guard test operations to `oda_test`.
+- `backend/src/lib/`: Decimal money/GST/units/variance/BOM/pricing/order math, FY, states, errors, audit, and async helpers.
+- `backend/src/routes/`: health, auth, audit, stock/adjustments, purchases, BOMs, production, catalog, orders, items, customers/prices, suppliers, settings, and users.
+- `backend/src/services/`: auth, append-only ledger, stock availability, adjustment, purchase/costing/pricing/order, BOM, production-run start/completion/variance/history/cancellation, master data, settings, and user logic.
+- `backend/tests/`: API/unit suites including benchmark, pricing, catalog, order, and order-math coverage; `helpers/db.js` and setup guard test operations to `oda_test`.
 - `frontend/`: Vite/React UI, Tailwind, API client, and `/api` proxy.
 
 ## API endpoints (METHOD path - roles - purpose)
@@ -89,6 +91,7 @@ Step 23 - Salesman order creation
 - `/api/stock`: `GET /summary?type=`, `/ledger?itemId=&from=&to=`, `/items/:id/balance` ADMIN/PRODUCTION/ACCOUNTANT/OWNER; `GET /finished-availability` also SALESMAN; `POST /adjustments` ADMIN/PRODUCTION; `GET /adjustments` stock-read roles.
 - `/api/purchases`: `POST /` PRODUCTION/ADMIN; `GET /?page=&limit=&from=&to=&supplierId=` and `GET /:id` PRODUCTION/ADMIN/ACCOUNTANT/OWNER. Receipts write ledger and audit atomically.
 - `/api/catalog`: `GET /order-items?customerId=` SALESMAN/ADMIN; salesmen can only access assigned customers. Returns priced active finished goods and current packet balances.
+- `/api/orders`: `POST /` SALESMAN; creates SUBMITTED orders using server-resolved price snapshots, merges duplicate item lines, and returns a duplicate for a repeated clientRef.
 - `/api/items`: `GET /?type=&active=`, `GET /:id` authenticated; `POST /`, `PATCH /:id` ADMIN.
 - `/api/customers`: `GET /?type=&active=`, `GET /:id`, `GET /:id/prices` authenticated (salesmen assigned customers only); `POST /`, `PATCH /:id`, `PUT /:id/prices` ADMIN.
 - `/api/suppliers`: `GET /?active=`, `GET /:id` authenticated; `POST /`, `PATCH /:id` ADMIN. `/api/settings`: `GET /` authenticated; `PUT /:key` ADMIN.
@@ -112,6 +115,7 @@ Step 23 - Salesman order creation
 - Production run list `from`/`to` filters apply inclusively to `startedAt`; cancellation reverses issued outflows as positive `ADJUSTMENT` ledger rows and retains all run history.
 - Benchmark playback uses the public API and the existing hyphenated `after-run` checker stage; test seeding reuses `prisma/seed.js` and downgrades demo password hashes to bcrypt cost 4 for speed.
 - Customer-specific prices take precedence over default selling prices only when positive integer paise; catalog entries without a positive resolved price are omitted.
+- Order requests use server-side price snapshots and integer packet quantities; repeated clientRef requests from the same salesman are the mobile offline-sync idempotency contract.
 
 ## Assumptions (copy into README at the end)
 - Project source and project guidance live at the Git repository root.
@@ -141,6 +145,7 @@ Step 23 - Salesman order creation
 - Test DB reset timeout raised for slow Windows/Docker.
 - `bench:play` requires a fresh seed (100 kg flour and no production runs); rerunning it against a used benchmark database is intentionally refused.
 - The salesman catalog intentionally omits active finished goods with no positive customer-specific or default price.
+- Order retries are deduplicated only when the client supplies a valid `clientRef`.
 
 ## Benchmark status (stage: PASS/FAIL/SKIPPED)
 opening PASS; after-purchase PASS; after-issue PASS; after-run PASS (latest: 16 PASS, 0 FAIL, 24 SKIPPED; all four ledger-reconciliation stage assertions PASS)
