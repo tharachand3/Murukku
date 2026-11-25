@@ -2,12 +2,13 @@
 Last updated: 2026-11-25 by Copilot
 
 ## Next Step
-Step 21 - Automated benchmark test: steps 1 to 3
+Step 22 - Customer-specific price resolution
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install`; start/stop PostgreSQL on port 5433 with `npm run db:up` / `npm run db:down`.
 - Create `oda_test` once: `docker compose exec -T db createdb -U oda oda_test`. From `backend/`, set `$env:DATABASE_URL = 'postgresql://oda:oda@localhost:5433/oda_test?schema=public'`, run `npx prisma migrate deploy`, then `Remove-Item Env:DATABASE_URL`; Vitest refuses non-test databases.
 - Run backend tests from `backend/`: `npm test`. Build the frontend with `npm --prefix frontend run build`.
+- Run the API benchmark from `backend/` after `npm run seed:reset` with the API running: `npm run bench:play` (optional `-- --upto=1|2|3`, `API_URL` overrides the default); then run `npm run bench:check -- --stage=after-run`.
 - Start API/UI in separate terminals: `npm run dev:backend` and `npm run dev:frontend`.
 - Prisma commands from `backend/`: `npx prisma format`, `npx prisma validate`, `npx prisma migrate dev`, `npx prisma migrate status`.
 - Seed with `npm run seed`; reset/reseed (destructive; production is refused) with `npm run seed:reset`; print ledger balances with `npm run balances`.
@@ -33,7 +34,7 @@ Step 21 - Automated benchmark test: steps 1 to 3
 09-14 [x]: ledger service; stock APIs/benchmark checker; FY numbering; purchases; adjustments; master-data APIs.
 ### Phase 3 - BOM and production (highest weight)
 15-16 [x]: BOM CRUD/versioning/cloning; planned-consumption calculator.
-17-20 [x] production start/issues, completion/output/scrap, variance/tolerance, run history/edit/cancel; 21 [ ] benchmark steps 1-3.
+17-21 [x] production start/issues, completion/output/scrap, variance/tolerance, run history/edit/cancel, API benchmark steps 1-3; 22 [ ] customer-specific price resolution.
 ### Phase 4 - Sales loop
 22-33 [ ] price resolution; orders; order roles/status; availability; approval; GST; invoicing; dispatch; payments; credit notes; shortage flow; benchmark steps 4-7.
 ### Phase 5 - Costing
@@ -46,6 +47,7 @@ Step 21 - Automated benchmark test: steps 1 to 3
 57-60 [ ] full benchmark/fixes; deployment; README/design note; demo/interview/final audit.
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
+- Step 21 (2026-11-25): Added a seeded HTTP integration benchmark for purchase, issue, completion, variance, cost, audit, traceability, role access, and stock reconciliation; added `bench:play` and four staged ledger-reconciliation checks. Files: benchmark helper/test/playback/checker, backend package script, and this log. `npm test` passes (103); live playback and `after-run` check pass (16 PASS, 0 FAIL), and replay on the non-fresh database refuses as expected. Decision: reused `prisma/seed.js`, then set test demo password hashes to bcrypt cost 4; existing Vitest file serialization needed no change. The raw append-only UPDATE guard remains covered by the ledger service test.
 - Step 20 (2026-11-25): Added filtered/paginated run history, detail with ledger/audit trail, audited notes/batch edits, and transactional cancellation with positive ledger reversals. Files: production service/routes/tests and this log. `npm test` passes (100); `npm run bench:check -- --stage=after-run` passes (12 checks). Decision: date filters use `startedAt`; completed runs require stock adjustments for correction and cannot be cancelled.
 - Step 19 (2026-11-25): Added snapshot-tolerance yield/material variance calculations, persisted flags during completion, run detail and paginated/filterable variance APIs, and final benchmark variance assertions with carton/pouch informational output. Files: variance service, production service/route/tests, benchmark checker, and this log. Targeted variance tests pass (14); full `npm test` and API benchmark verification pass. Decision: flags use the run's saved tolerance and strict `abs(bp) > tolerance`; extra carton/pouch flags must be explained in README.
 - Step 18 (2026-11-25): Added locked transactional completion, packaging consumption/scrap issues, finished output, final material-cost snapshot, audit, and `POST /api/production/runs/:id/complete`. Added full benchmark completion and rollback/validation tests, plus a completed-output benchmark assertion. Files: production service/route, production tests, benchmark checker, and this log. `npm test` passes (94); reset + purchase + start + complete + `after-run` benchmark passes (12 checks). Variance remains unset for Step 19.
@@ -71,12 +73,12 @@ Step 21 - Automated benchmark test: steps 1 to 3
 - Root: `AGENTS.md`, `package.json`, `.gitignore`, `docker-compose.yml` - project rules, scripts, ignores, and Postgres.
 - `docs/`: AI context, progress, step prompts, and Mermaid data model.
 - `backend/prisma/`: schema, migrations (including append-only trigger and stock adjustments), and idempotent benchmark seed.
-- `backend/scripts/`: guarded reset/reseed, balance output, and staged benchmark checker.
+- `backend/scripts/`: guarded reset/reseed, balance output, staged benchmark checker, and API-only benchmark playback.
 - `backend/src/config/`, `middleware/`: role/capability matrix, auth, validation, and centralized error handling.
 - `backend/src/lib/`: Decimal money/GST/units/variance/BOM math, FY, states, errors, audit, and async helpers.
 - `backend/src/routes/`: health, auth, audit, stock/adjustments, purchases, BOMs, production, items, customers/prices, suppliers, settings, and users.
 - `backend/src/services/`: auth, append-only ledger, stock availability, adjustment, purchase/costing, BOM, production-run start/completion/variance/history/cancellation, master data, settings, and user logic.
-- `backend/tests/`: API/unit suites; `helpers/db.js` and setup guard test operations to `oda_test`.
+- `backend/tests/`: API/unit suites including the ordered benchmark integration; `helpers/db.js` and setup guard test operations to `oda_test`.
 - `frontend/`: Vite/React UI, Tailwind, API client, and `/api` proxy.
 
 ## API endpoints (METHOD path - roles - purpose)
@@ -105,6 +107,7 @@ Step 21 - Automated benchmark test: steps 1 to 3
 - A run line's `issuedQty` records total quantity leaving stock for the run (consumed plus scrap); step 17 starts raw-material issues, while packaging can be issued at completion.
 - Variance flags compare total issued quantities (consumed plus scrap) with BOM plan using the run's saved tolerance; `abs(bp)` must be strictly greater than tolerance. Cartons -10.00% are flagged and pouches -3.00% are not flagged at 300 bp; these are extra flags to explain in README.
 - Production run list `from`/`to` filters apply inclusively to `startedAt`; cancellation reverses issued outflows as positive `ADJUSTMENT` ledger rows and retains all run history.
+- Benchmark playback uses the public API and the existing hyphenated `after-run` checker stage; test seeding reuses `prisma/seed.js` and downgrades demo password hashes to bcrypt cost 4 for speed.
 
 ## Assumptions (copy into README at the end)
 - Project source and project guidance live at the Git repository root.
@@ -132,13 +135,13 @@ Step 21 - Automated benchmark test: steps 1 to 3
 - Planned batch counts are capped at 100; fractional ingredient results are rounded to integer base units as required for stock quantities.
 - Explicit `bomId` can start a run from that BOM version; `finishedItemId` resolves the active BOM.
 - Test DB reset timeout raised for slow Windows/Docker.
+- `bench:play` requires a fresh seed (100 kg flour and no production runs); rerunning it against a used benchmark database is intentionally refused.
 
 ## Benchmark status (stage: PASS/FAIL/SKIPPED)
-opening PASS (6 checks; later-stage checks skipped)
-after-purchase PASS (4 checks; later-stage checks skipped)
-after-issue PASS (10 checks; later-stage checks skipped)
-after-run PASS (12 checks; 0 failed; later-stage checks skipped)
+opening PASS; after-purchase PASS; after-issue PASS; after-run PASS (latest: 16 PASS, 0 FAIL, 24 SKIPPED; all four ledger-reconciliation stage assertions PASS)
+variance PASS (yield -600 bp and oil +500 bp flagged; flour/spice 0 bp, pouches -300 bp not flagged, cartons -1000 bp flagged)
+sales stages SKIPPED
 
 ## Day 1 checkpoint
-Steps 01-20 done. Run `npm run bench:check -- --stage=after-run` from `backend/`.
-Current PASS rows: purchase receipt (60 kg at Rs 45/kg), flour weighted-average rate (4.3125), purchases count (1), started runs count (1); after-run balances flour 120 kg, oil 19.5 l, spice 3.8 kg, pouches 306 pcs, cartons 21 pcs, finished goods 238 packets; completed run with 188 good packets and completed runs count (1).
+Steps 01-21 done. Run `npm run bench:play` from `backend/` against a fresh seed, then `npm run bench:check -- --stage=after-run`.
+Current PASS rows: purchase receipt (60 kg at Rs 45/kg), flour weighted-average rate (4.3125), purchases count (1), started runs count (1); after-run balances flour 120 kg, oil 19.5 l, spice 3.8 kg, pouches 306 pcs, cartons 21 pcs, finished goods 238 packets; completed run with 188 good packets and material cost 405500 paise.

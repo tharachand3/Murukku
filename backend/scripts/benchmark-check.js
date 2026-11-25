@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { getAverageRate } from '../src/services/costingService.js';
 import { getBalances } from '../src/services/ledgerService.js';
+import { formatQty } from '../src/lib/units.js';
 import { computeRunVariance } from '../src/services/varianceService.js';
 
 const EXPECTED = {
@@ -246,6 +247,30 @@ const checks = Object.entries(EXPECTED).flatMap(([stage, expectations]) => [
     actualFn: DOCUMENT_READERS[document]
   }))
 ]);
+
+checks.push(...['opening', 'after-purchase', 'after-issue', 'after-run'].map((stage) => ({
+  name: 'ledger reconciles: SUM(qtyChange) per item equals the displayed balance',
+  kind: 'document',
+  stage,
+  expected: true,
+  actualFn: async (db) => {
+    const [balances, totals] = await Promise.all([
+      getBalances(db),
+      db.stockMovement.groupBy({
+        by: ['itemId'],
+        _sum: { qtyChange: true }
+      })
+    ]);
+    const totalByItemId = new Map(
+      totals.map(({ itemId, _sum }) => [itemId, _sum.qtyChange ?? 0])
+    );
+    return balances.every(({ itemId, balanceBase, balanceDisplay, displayUnit }) => {
+      const ledgerTotal = totalByItemId.get(itemId) ?? 0;
+      return ledgerTotal === balanceBase &&
+        formatQty(ledgerTotal, displayUnit) === balanceDisplay;
+    });
+  }
+})));
 
 function readStage(args) {
   const stageArgument = args.find((argument) => argument.startsWith('--stage='));
