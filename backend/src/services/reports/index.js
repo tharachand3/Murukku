@@ -15,3 +15,7 @@ export function getReport(key) {
 // Append new reports below this line (import + registerReport). Never reorder.
 import salesRegister from './salesRegister.js';
 registerReport(salesRegister);
+import salesByCustomer from './salesByCustomer.js';
+registerReport(salesByCustomer);
+import salesByProduct from './salesByProduct.js';
+registerReport(salesByProduct);
