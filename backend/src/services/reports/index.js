@@ -19,3 +19,5 @@ import salesByCustomer from './salesByCustomer.js';
 registerReport(salesByCustomer);
 import salesByProduct from './salesByProduct.js';
 registerReport(salesByProduct);
+import gstSummary from './gstSummary.js';
+registerReport(gstSummary);

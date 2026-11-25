@@ -402,3 +402,9 @@ Audit logs capture who changed an entity and the recorded before-and-after value
 - Money cells are integer paise; decimal quantities and rates are strings; percentages are integer basis points.
 - Paginated reports return section-level page metadata while preserving totals for the complete filtered set.
 - The sales register groups invoice sums by status so posted sales and cancelled credit-note values remain distinct.
+- GST summary invoice sections select invoices by issueDate in the inclusive IST period regardless of status; credit-note sections select notes by createdAt. GSTR-3B outward supplies and the HSN summary net original invoice lines against credit notes, so a credit note appears in its own issue period even when the invoice was issued earlier.
+- Credit notes are full-invoice cancellations in v1. Their taxable value and tax by rate are taken from the original invoice lines. GSTR-1 credit-note detail shows the note values positively; GSTR-3B and HSN netting subtracts them.
+- GST registration is based on the customer's current GSTIN, while inter-state classification uses the invoice's saved `isInterState` value. Place-of-supply labels use `<stateCode>-<stateName>`.
+- B2CL is an unregistered inter-state invoice above 25000000 paise; other unregistered supplies are B2CS. The constant is `B2CL_THRESHOLD_PAISE`.
+- The GST HSN UQC mapping is packet -> PAC, pcs -> PCS, g -> GMS, kg -> KGS, ml -> MLT, l -> LTR; unknown units use NOS. Cancellations are represented by credit notes and the documents-issued cancelled count is always zero.
+- The GST report does not yet include HSN-level exempt or nil-rated supplies, cess, or amendments.
