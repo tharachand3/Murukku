@@ -2,7 +2,7 @@
 Last updated: 2026-11-26 by Copilot
 
 ## Next Step
-Step 40 - Stock summary and stock ledger reports
+Step 41 - Purchase reports
 
 ## How to run (keep accurate)
 - Install dependencies: `npm --prefix backend install`; start/stop PostgreSQL on port 5433 with `npm run db:up` / `npm run db:down`.
@@ -16,6 +16,7 @@ Step 40 - Stock summary and stock ledger reports
 - Cost sheet verification: from `backend/`, run `npm test -- tests/lib/costMath.sheet.test.js tests/costing.sheet.test.js`.
 - Reports verification: from `backend/`, run `npm test -- tests/lib/salesAgg.test.js tests/reports.salesBy.test.js tests/reports.kit.test.js tests/reports.salesRegister.test.js`.
 - GST report verification: from `backend/`, run `npm test -- tests/lib/gstReport.test.js tests/reports.gst.test.js`.
+- Stock report verification: from `backend/`, run `npm test -- tests/lib/stockClassify.test.js tests/reports.stock.test.js`.
 - Run the API benchmark from `backend/` after `npm run seed:reset` with the API running: `npm run bench:play` (defaults through step 8; optional `-- --upto=1` through `--upto=8`, `API_URL` overrides the default). The script prints the exact checker command; full playback ends with `npm run bench:check -- --stage=final`.
 - Order catalog: authenticated `GET /api/catalog/order-items?customerId=<id>` for SALESMAN/ADMIN; customer prices override defaults, and items without a positive price are omitted.
 - Create an order with SALESMAN `POST /api/orders` using `{ clientRef?, customerId, notes?, lines: [{ itemId, qty }] }`; prices are resolved server-side, and retrying a supplied `clientRef` returns the existing order.
@@ -60,7 +61,7 @@ Step 40 - Stock summary and stock ledger reports
 ### Phase 5 - Costing
 34 [x] weighted-average cost service and read APIs; 35 [x] overhead allocation per run and cost per good packet; 36 [x] cost sheets, cost per packet, product costing, and shared benchmark test helpers.
 ### Phase 6 - Reports and PDF
-37 [x] report framework and sales register; 38 [x] customer/product sales reports; 39 [x] GST summary; 40-45 [ ] stock/purchase/production/receivables reports; exports; invoice PDF.
+37 [x] report framework and sales register; 38 [x] customer/product sales reports; 39 [x] GST summary; 40 [x] stock summary and ledger; 41-45 [ ] purchase/production/receivables reports; exports; invoice PDF.
 ### Phase 7 - Frontend
 46-56 [ ] router/auth/role layouts; login; salesman orders/customers; admin orders/invoices; production/stock/reports pages; dashboard/alerts.
 ### Phase 8 - Ship
@@ -72,6 +73,7 @@ Step 40 - Stock summary and stock ledger reports
 - Step 36 (2026-11-26): Added per-run cost sheets with planned/actual material variances, overhead allocation, margin, and grouped completed-run product costing; added reusable full-benchmark and extra-flow test helpers plus pure cost-sheet math tests. Files: costMath, costSheetService, costing route/checker, new tests/helpers, and this log. `npm test` passes (239; baseline 228); focused tests 11 PASS; final checker 26 PASS, 0 FAIL. Decisions: line cost uses its stored rate, with average-rate fallback only for never-issued lines; product average is total cost divided by total good packets; price is the item default only.
 - Step 37 (2026-11-26): Added typed report definitions, IST period/pagination helpers, registry, role-filtered catalog/generic route, and sales register with status-grouped summaries. Files: reportKit, report registry/service, route/app mount, new report tests, DATA_MODEL, and this log. `npm test` passes (254; baseline 239); focused suite 15 PASS. Decision: report period defaults to current FY start through today; totals use one page query plus one status groupBy. Posted-invoice immutability prevents date updates, so IST API boundaries use dedicated test-only invoices inserted at the tested timestamps. The Step 36 `createDistributorInvoice` helper sends `itemId` instead of `lineId`; the test uses the same public APIs without modifying that helper.
 - Step 38 (2026-11-26): Added integer-only customer/product sales aggregation and two posted-invoice reports with filters, pagination, filtered-set shares, snapshot product names/HSN, and role/catalog coverage. Files: salesAgg, report definitions/registry append, new unit/API tests, and this log. Baseline 254; focused suites 24 PASS. Decisions: later-period credit notes do not restate an earlier customer/product period; GST reporting will net credit notes. Shares use filtered posted sales; item details use the earliest matched invoice-line snapshot when snapshots differ.
+- Step 40 (2026-11-26): Added pure movement classification and registered stock summary/ledger reports with raw-SQL aggregates, valuation, per-item reconciliation, and running balances. Files: stockClassify, report definitions/registry append, and new unit/API tests. `npm test` passes (279; baseline 271); focused stock suite 8 PASS. Decisions: movement classification follows ledger type/sign, reconciliation is exposed per row, finished-goods value stays in costing, and ledger reads cap at 20000 movements.
 - Step 39 (2026-11-26): Added pure GST section aggregation and the registered `gst-summary` report with GSTR-1 B2B/B2CL/B2CS, credit-note, HSN and document sections plus net GSTR-3B summaries. Files: gstReport, report definition/registry append, new unit/API tests, DATA_MODEL and this log. Baseline 263; focused report regression suite 32 PASS. Decisions: invoice issueDate/status and credit-note createdAt drive separate periods; GSTR-3B/HSN net full-invoice credits; B2CL uses 25000000 paise; UQC map and zero cancellation counts documented.
 - Step 33 (2026-11-26): Added the public-API benchmark helper and ordered steps 4-7 test; extended playback through payments and checker proofs for dispatch, outstanding, and Distributor B's shortage. Files: new benchmark flow/test, additive playback/checker changes, and this log. `npm test` passes (204; baseline 199); live playback passes, after-dispatch checker 14 PASS/0 FAIL, final checker 21 PASS/0 FAIL, `--upto=3` and the non-fresh guard verified. Decisions: Vitest already serializes files; use the real invoice-preview API for IGST and preserve Step 26's 409 shortage behavior. Applied the pending additive invoice-snapshot migration to the dev DB before live playback.
 - Step 32 (2026-11-26): Added integer FIFO allocation and batch planning, a grouped finished-goods shortage summary, the role-gated orders shortage endpoint, and API/unit coverage. Files: planning helper, additive availability/orders changes, new tests, and this log. `npm test` passes (199; baseline 189). Decisions: preserve actual Step 26 full-approval response (409 `INSUFFICIENT_STOCK`, availability details include `shortBy`); reduced approvals and reasoned rejection work. FIFO applies to SUBMITTED orders; suggested batches use the highest-version active BOM.
@@ -113,10 +115,10 @@ Step 40 - Stock summary and stock ledger reports
 - `backend/prisma/`: schema, invoice snapshot/immutability migration, append-only ledger and stock-adjustment migrations, and idempotent benchmark seed.
 - `backend/scripts/`: guarded reset/reseed, balance output, staged checker including dispatch/outstanding/shortage/cost proofs, and API-only benchmark playback through steps 1-8.
 - `backend/src/config/`, `middleware/`: role/capability matrix, auth, validation, and centralized error handling.
-- `backend/src/lib/`: Decimal money/GST/cost/allocation/invoice/units/variance/BOM/pricing/order/shortage/planning/outstanding/report/customer-product sales and GST report math, order transitions, IST date ranges, FY, states, errors, audit, and async helpers.
+- `backend/src/lib/`: Decimal money/GST/cost/allocation/invoice/units/variance/BOM/pricing/order/shortage/planning/outstanding/report/customer-product sales/GST report math and stock-movement classification, order transitions, IST date ranges, FY, states, errors, audit, and async helpers.
 - `backend/src/routes/`: health, auth, audit, stock/adjustments/finished availability, purchases, costing, reports, BOMs, production and overheads, catalog, orders/invoice preview/shortage list, invoice create/read/cancel and dispatch status, credit notes, dispatches, payments/outstanding, items, customers/prices, suppliers, settings, and users.
-- `backend/src/services/`: auth, append-only ledger, stock/availability/shortage planning, adjustment, purchase/costing/cost-sheet/pricing/order workflows, GST drafts, invoice/dispatch/credit-note/payment workflows, report registry and sales-register/customer/product/GST reports, BOM, production-run start/completion/overhead costing/variance/history/cancellation, master data, settings, and user logic.
-- `backend/tests/`: API/unit suites including benchmark parts 1-2, `benchmarkFlow.js`, reusable `benchmarkFull.js` and `benchmarkExtras.js`, report framework/sales-register/customer-product/GST reports and pure aggregation, weighted-average/overhead/cost-sheet costing, pricing, catalog, order workflows, GST previews/invoice math, invoice creation/immutability/cancellation, credit notes, dispatch, payment/outstanding, shortage planning/flow, order transitions/math, and IST date coverage; `helpers/db.js` and setup guard test operations to `oda_test`.
+- `backend/src/services/`: auth, append-only ledger, stock/availability/shortage planning, adjustment, purchase/costing/cost-sheet/pricing/order workflows, GST drafts, invoice/dispatch/credit-note/payment workflows, report registry and sales-register/customer/product/GST/stock reports, BOM, production-run start/completion/overhead costing/variance/history/cancellation, master data, settings, and user logic.
+- `backend/tests/`: API/unit suites including benchmark parts 1-2, `benchmarkFlow.js`, reusable `benchmarkFull.js` and `benchmarkExtras.js`, report framework/sales-register/customer-product/GST/stock reports and pure aggregation/classification, weighted-average/overhead/cost-sheet costing, pricing, catalog, order workflows, GST previews/invoice math, invoice creation/immutability/cancellation, credit notes, dispatch, payment/outstanding, shortage planning/flow, order transitions/math, and IST date coverage; `helpers/db.js` and setup guard test operations to `oda_test`.
 - `frontend/`: Vite/React UI, Tailwind, API client, and `/api` proxy.
 
 ## API endpoints (METHOD path - roles - purpose)
@@ -134,6 +136,7 @@ Step 40 - Stock summary and stock ledger reports
 - `/api/reports`: `GET /` lists reports available to the authenticated role; `GET /sales-register?from=&to=&customerId=&status=&taxType=&page=&limit=` returns typed invoice and summary sections for ADMIN/ACCOUNTANT/OWNER. Dates are inclusive IST days, defaulting to current FY start through today; summary totals do not change with page selection.
 - `/api/reports`: `GET /sales-by-customer?from=&to=&customerType=&customerId=&page=&limit=` and `GET /sales-by-product?from=&to=&customerId=&itemId=&page=&limit=` return posted-invoice sales by customer/product for ADMIN/ACCOUNTANT/OWNER. Both default to current FY through today; shares are basis points of the filtered sales total.
 - `/api/reports`: `GET /gst-summary?from=&to=` (ADMIN/ACCOUNTANT/OWNER) returns the GSTR-1-shaped sections and GSTR-3B outward/inter-state unregistered summaries. Invoices are selected by issueDate; credit notes by createdAt; GSTR-3B and HSN are net of credits.
+- `/api/reports`: `GET /stock-summary?from=&to=&type=&itemId=&hideEmpty=&page=&limit=` and `GET /stock-ledger?from=&to=&type=&itemId=&page=&limit=` (ADMIN/PRODUCTION/ACCOUNTANT/OWNER) provide per-item reconciliation/value and paginated running movements; ledger reads are capped at 20000 rows.
 - `/api/credit-notes`: `GET /?customerId=&from=&to=&page=&limit=` and `GET /:id` ADMIN/ACCOUNTANT/OWNER. `POST /api/invoices/:id/cancel` ADMIN creates a full credit note and reverses dispatched stock.
 - `/api/items`: `GET /?type=&active=`, `GET /:id` authenticated; `POST /`, `PATCH /:id` ADMIN.
 - `/api/customers`: `GET /?type=&active=`, `GET /:id`, `GET /:id/prices` authenticated (salesmen assigned customers only); `POST /`, `PATCH /:id`, `PUT /:id/prices` ADMIN.
@@ -181,6 +184,15 @@ Step 40 - Stock summary and stock ledger reports
 - Reports follow the reportKit definition/section contract; sales-register totals use one invoice groupBy by status and remain independent of pagination. Posted invoice immutability blocks test updates to issueDate, so boundary fixtures are inserted directly in the isolated test database. The Step 36 distributor helper's approval payload is invalid; Step 37 uses the public endpoints without altering the existing helper.
 - Customer and product sales reports include POSTED invoices only, and shares use the matching filtered total (basis-point rounding means shares may not sum to exactly 10000). Product names and HSN use invoice-line snapshots; if historical line snapshots differ for an item, the earliest matching snapshot is used for the grouped row. A credit note in a later period does not reduce earlier customer/product sales; GST reporting will net credit notes in its own period logic.
 - GST summary includes invoices of every status by issueDate and credit notes by createdAt. GSTR-3B/HSN net full invoice line values; B2CL means unregistered inter-state invoice total strictly greater than 25000000 paise. HSN UQC mapping: packet/PAC, pcs/PCS, g/GMS, kg/KGS, ml/MLT, l/LTR, unknown/NOS. Document cancellations count is zero because cancellation is via credit note.
+- Stock movement classification uses this table; unknown type/sign combinations fall back to sign classification and are counted as unclassified:
+
+  | Movement types | Summary columns |
+  | --- | --- |
+  | OPENING, PURCHASE, PRODUCTION_OUTPUT, SALES_RETURN | openingEntries, purchases, productionIn, returnsIn |
+  | PRODUCTION_ISSUE, PRODUCTION_SCRAP, DISPATCH | productionOut, scrapOut, dispatchOut |
+  | ADJUSTMENT (positive / zero or negative) | adjustmentsIn / adjustmentsOut |
+
+  Stock reconciliation is shown per item. Stock summary excludes finished-goods valuation; use production costing for that. Stock ledger reads are capped at 20000 movements.
 
 ## Assumptions (copy into README at the end)
 - Project source and project guidance live at the Git repository root.
@@ -194,6 +206,7 @@ Step 40 - Stock summary and stock ledger reports
 - The main benchmark intentionally leaves Distributor B's shortage order unapproved; a backorder is a new order after production replenishes stock.
 
 ## Known issues / TODO
+- Stock ledger reports reject filters matching more than 20000 movements; narrow the period or select an item.
 - Order approval blocks on stock shortage with no force option.
 - Payment edit, delete, and reversal are not available in v1; correction requires a future credit/adjustment workflow.
 - Cancelling a dispatched invoice containing an inactive item currently fails with ledger `addMovement`'s 422 `UNPROCESSABLE_ENTITY` response (the item id is in `details`) and the transaction rolls back.

@@ -21,3 +21,7 @@ import salesByProduct from './salesByProduct.js';
 registerReport(salesByProduct);
 import gstSummary from './gstSummary.js';
 registerReport(gstSummary);
+import stockSummary from './stockSummary.js';
+registerReport(stockSummary);
+import stockLedger from './stockLedger.js';
+registerReport(stockLedger);
