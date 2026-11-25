@@ -108,6 +108,10 @@ const stockLedger = defineReport({
   capability: 'stock:read',
   filtersSchema,
   filterDocs,
+  sectionDocs: [
+    { key: 'movements', title: 'Stock movements' },
+    { key: 'balances', title: 'Opening and closing balances' }
+  ],
   async run(db, filters) {
     const period = resolvePeriod(filters);
     const itemFilter = itemFilterSql(filters);

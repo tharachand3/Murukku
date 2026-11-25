@@ -78,6 +78,11 @@ const purchaseRegister = defineReport({
   capability: 'purchases:read',
   filtersSchema,
   filterDocs,
+  sectionDocs: [
+    { key: 'lines', title: 'Purchase lines' },
+    { key: 'by-supplier', title: 'Purchases by supplier' },
+    { key: 'by-item', title: 'Purchases by item' }
+  ],
   async run(db, filters, { all = false } = {}) {
     const period = resolvePeriod(filters);
     const purchaseWhere = {

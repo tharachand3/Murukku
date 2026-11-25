@@ -104,6 +104,7 @@ const stockSummary = defineReport({
   capability: 'stock:read',
   filtersSchema,
   filterDocs,
+  sectionDocs: [{ key: 'items', title: 'Stock summary by item' }],
   async run(db, filters) {
     const period = resolvePeriod(filters);
     const itemFilter = filterSql(filters);

@@ -196,6 +196,17 @@ const gstSummary = defineReport({
   capability: 'reports:read',
   filtersSchema,
   filterDocs,
+  sectionDocs: [
+    { key: 'gstr3b-outward', title: 'GSTR-3B 3.1(a) - Outward taxable supplies' },
+    { key: 'gstr3b-interstate-unregistered', title: 'GSTR-3B 3.2 - Inter-state supplies to unregistered persons' },
+    { key: 'gstr1-b2b', title: 'GSTR-1 B2B - Registered recipients' },
+    { key: 'gstr1-b2cl', title: 'GSTR-1 B2CL - Large inter-state unregistered supplies' },
+    { key: 'gstr1-b2cs', title: 'GSTR-1 B2CS - Other unregistered supplies' },
+    { key: 'gstr1-cdnr', title: 'GSTR-1 CDNR - Credit notes to registered recipients' },
+    { key: 'gstr1-cdnur', title: 'GSTR-1 CDNUR - Credit notes to unregistered recipients' },
+    { key: 'gstr1-hsn', title: 'GSTR-1 HSN summary' },
+    { key: 'gstr1-docs', title: 'GSTR-1 Documents issued' }
+  ],
   async run(db, filters) {
     const period = resolvePeriod(filters);
     const invoiceWhere = {

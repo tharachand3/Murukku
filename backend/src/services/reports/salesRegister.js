@@ -71,6 +71,10 @@ const salesRegister = defineReport({
   capability: 'reports:read',
   filtersSchema,
   filterDocs: FILTER_DOCS,
+  sectionDocs: [
+    { key: 'invoices', title: 'Invoices' },
+    { key: 'summary', title: 'Summary' }
+  ],
   async run(db, filters, { all = false } = {}) {
     const period = resolvePeriod(filters);
     const where = {

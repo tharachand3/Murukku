@@ -138,6 +138,12 @@ const productionReport = defineReport({
   capability: 'production:read',
   filtersSchema,
   filterDocs,
+  sectionDocs: [
+    { key: 'runs', title: 'Production runs' },
+    { key: 'consumption', title: 'Material consumption and variance' },
+    { key: 'wastage', title: 'Material wastage' },
+    { key: 'yield', title: 'Yield by product' }
+  ],
   async run(db, filters) {
     const period = resolvePeriod(filters);
     const where = {

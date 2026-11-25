@@ -71,6 +71,10 @@ const receivablesAgeing = defineReport({
   capability: 'payments:read',
   filtersSchema,
   filterDocs,
+  sectionDocs: [
+    { key: 'customers', title: 'Customer Ageing' },
+    { key: 'invoices', title: 'Invoice Ageing' }
+  ],
   async run(db, filters) {
     const asOfDate = filters.asOf ?? formatIstDate(new Date());
     const { lt: endExclusive } = istDayRange(asOfDate, asOfDate);

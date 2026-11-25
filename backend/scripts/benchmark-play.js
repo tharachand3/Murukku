@@ -1,5 +1,10 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { formatCell } from '../src/lib/exportFormat.js';
+
 const API_URL = (process.env.API_URL ?? 'http://localhost:4000').replace(/\/+$/, '');
 const PRODUCTION_EMAIL = 'production@demo.com';
+const ACCOUNTANT_EMAIL = 'accountant@demo.com';
 const PRODUCTION_PASSWORD = 'Demo@123';
 const ADMIN_EMAIL = 'admin@demo.com';
 const SALESMAN_A_EMAIL = 'salesman.a@demo.com';
@@ -248,6 +253,71 @@ steps.push(async ({ token, run }) => {
   );
 });
 
+steps.push(async ({ token: production, accountant, admin }) => {
+  const accountantCatalog = await api('/api/reports', { token: accountant });
+  if (!Array.isArray(accountantCatalog)) {
+    throw new Error('Accountant report catalog did not return a list');
+  }
+  const catalog = await api('/api/reports', { token: admin });
+  if (!Array.isArray(catalog) || catalog.length === 0) {
+    throw new Error('Report catalog is empty');
+  }
+  const outputDirectory = new URL('../exports/benchmark/', import.meta.url);
+  await mkdir(outputDirectory, { recursive: true });
+  const reportTokens = {
+    'production:read': production,
+    'stock:read': production,
+    'purchases:read': production,
+    'costing:read': accountant,
+    'payments:read': accountant,
+    'reports:read': accountant
+  };
+
+  for (const report of catalog) {
+    const token = reportTokens[report.capability] ?? admin;
+    const result = await api(`/api/reports/${report.key}`, { token });
+    const firstSection = result.sections?.[0];
+    if (!firstSection) {
+      throw new Error(`Report ${report.key} did not return a section`);
+    }
+    const headlineValues = firstSection.totals ?? firstSection.rows?.[0] ?? {};
+    const headlineEntry = report.key === 'product-costing'
+      ? (() => {
+          const product = firstSection.rows.find(({ productCode }) => (
+            productCode === 'MURUKKU200'
+          )) ?? firstSection.rows[0];
+          return product?.avgCostPerPacketPaise === null ||
+            product?.avgCostPerPacketPaise === undefined
+            ? undefined
+            : ['avgCostPerPacketPaise', formatCell(product.avgCostPerPacketPaise, 'moneyDecimal')];
+        })()
+      : Object.entries(headlineValues)
+        .sort(([left], [right]) => (
+          Number(/total/i.test(right)) - Number(/total/i.test(left))
+        ))
+        .find(([key, value]) => /Paise|total|amount|cost|margin/i.test(key) &&
+          value !== null && value !== undefined);
+    console.log(
+      `${report.key}: ${firstSection.rows.length} rows; ` +
+      `${headlineEntry ? `${headlineEntry[0]}=${headlineEntry[1]}` : 'no total'}`
+    );
+    for (const format of ['csv', 'xlsx', 'pdf']) {
+      const response = await fetch(
+        `${API_URL}/api/reports/${report.key}/export?format=${format}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(`${report.key} ${format} export failed (${response.status}): ${detail}`);
+      }
+      const fileUrl = new URL(`${report.key}.${format}`, outputDirectory);
+      await writeFile(fileUrl, Buffer.from(await response.arrayBuffer()));
+      console.log(`  ${fileURLToPath(fileUrl)}`);
+    }
+  }
+  console.log('Step 9 PASS: all registered reports exported as CSV, XLSX, and PDF.');
+});
+
 function readUpto(args) {
   const option = args.find((argument) => argument.startsWith('--upto='));
   if (!option) {
@@ -264,11 +334,12 @@ async function main() {
   let upto;
   try {
     upto = readUpto(process.argv.slice(2));
-    const [token, salesmanA, admin, salesmanB] = await Promise.all([
+    const [token, salesmanA, admin, salesmanB, accountant] = await Promise.all([
       login(),
       loginUser(SALESMAN_A_EMAIL),
       loginUser(ADMIN_EMAIL),
-      loginUser(SALESMAN_B_EMAIL)
+      loginUser(SALESMAN_B_EMAIL),
+      loginUser(ACCOUNTANT_EMAIL)
     ]);
     const [stock, runs, itemsResponse, suppliersResponse, customersResponse] = await Promise.all([
       api('/api/stock/summary', { token }),
@@ -301,6 +372,7 @@ async function main() {
       salesmanA,
       admin,
       salesmanB,
+      accountant,
       customers: { retailerA, distributorB }
     };
     for (let index = 0; index < upto; index += 1) {

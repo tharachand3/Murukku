@@ -31,3 +31,5 @@ import productionReport from './productionReport.js';
 registerReport(productionReport);
 import receivablesAgeing from './receivablesAgeing.js';
 registerReport(receivablesAgeing);
+import productCosting from './productCosting.js';
+registerReport(productCosting);

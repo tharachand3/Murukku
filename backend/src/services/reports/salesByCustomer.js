@@ -53,6 +53,7 @@ const salesByCustomer = defineReport({
   capability: 'reports:read',
   filtersSchema,
   filterDocs: FILTER_DOCS,
+  sectionDocs: [{ key: 'customers', title: 'Sales by customer' }],
   async run(db, filters, { all = false } = {}) {
     const period = resolvePeriod(filters);
     const where = {
