@@ -25,12 +25,14 @@ function renderApp(path) {
 }
 
 describe('application routes', () => {
-  it('sends anonymous root visitors to the sign-in stub', async () => {
+  it('sends anonymous root visitors to the login page', async () => {
     installMock(api, {});
     renderApp('/');
     await waitFor(() => expect(
-      screen.getByText('Sign-in screen arrives in step 47')
+      screen.getByRole('heading', { name: 'Order-to-Audit' })
     ).toBeInTheDocument());
+    expect(screen.getByText('Sign in to continue')).toBeInTheDocument();
+    expect(screen.getByLabelText('Email')).toBeInTheDocument();
   });
 
   it('loads the public status page and preserves the health check', async () => {
