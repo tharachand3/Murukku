@@ -77,6 +77,21 @@ describe('StockLedgerPage', () => {
     expect(screen.getByText('26-Nov-2026 10:00')).toBeInTheDocument();
   });
 
+  it('keeps the active date filter node mounted while its ledger query refreshes', async () => {
+    const adapter = renderLedger();
+    await screen.findByText('Stock ledger · Flour');
+    const from = screen.getByLabelText('From');
+    from.focus();
+    fireEvent.change(from, { target: { value: '2026-04-02' } });
+
+    await waitFor(() => {
+      expect(adapter.calls.filter((call) => call.url === '/stock/ledger')).toHaveLength(2);
+    });
+    expect(from.isConnected).toBe(true);
+    expect(document.activeElement).toBe(from);
+    expect(screen.getByLabelText('From')).toBe(from);
+  });
+
   it('downloads the selected export through the authenticated report endpoint', async () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     const adapter = renderLedger();

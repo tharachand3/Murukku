@@ -161,9 +161,9 @@ export default function RunDetailPage() {
   }, [run, goodQty, packagingDrafts, packagingLines]);
 
   const refreshRun = () => {
-    runRequest.reload();
-    varianceRequest.reload();
-    costRequest.reload();
+    runRequest.reload({ silent: true });
+    varianceRequest.reload({ silent: true });
+    costRequest.reload({ silent: true });
   };
 
   const startAction = (name) => {
@@ -255,7 +255,7 @@ export default function RunDetailPage() {
         notes: editNotes.trim() || null,
         batchNo: editBatchNo.trim() || null
       });
-      runRequest.reload();
+      runRequest.reload({ silent: true });
     } catch (error) {
       setEditError(toApiError(error).message);
     } finally {
@@ -556,7 +556,7 @@ export default function RunDetailPage() {
                 label="Good packets"
                 min="0"
                 onChange={(event) => setGoodQty(event.target.value)}
-                type="number"
+                type="text"
                 value={goodQty}
               />
               <Input
@@ -565,7 +565,7 @@ export default function RunDetailPage() {
                 label="Rejected packets"
                 min="0"
                 onChange={(event) => setRejectedQty(event.target.value)}
-                type="number"
+                type="text"
                 value={rejectedQty}
               />
               <Input label="Batch number (optional)" onChange={(event) => setBatchNo(event.target.value)} value={batchNo} />

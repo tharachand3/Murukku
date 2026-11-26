@@ -1,7 +1,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ProductionTestProviders, prepareProductionTest } from '../../test/productionPageHelpers.jsx';
+import { expectStableTyping } from '../../test/remountGuard.js';
 import NewRunPage from './NewRunPage.jsx';
 
 const BOM = {
@@ -63,6 +65,20 @@ describe('NewRunPage', () => {
   beforeEach(() => {
     localStorage.clear();
     sessionStorage.clear();
+  });
+
+  it('keeps batch and issue quantity inputs stable while typing', async () => {
+    const user = userEvent.setup();
+    renderNewRun();
+    await screen.findByText('Start production run');
+    const batches = screen.getByLabelText('Batches');
+    await user.clear(batches);
+    await expectStableTyping(user, () => screen.getByLabelText('Batches'), '2.5');
+    fireEvent.click(screen.getByRole('button', { name: 'Preview plan' }));
+    await screen.findByText(/expected output 200 packet/);
+    const issue = screen.getByLabelText('Issue quantity (l)');
+    await user.clear(issue);
+    await expectStableTyping(user, () => screen.getByLabelText('Issue quantity (l)'), '10.5');
   });
 
   it('previews the BOM, shows oil over-plan, and submits the backend issue shape once', async () => {

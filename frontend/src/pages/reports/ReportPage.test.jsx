@@ -1,7 +1,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminTestProviders, prepareAdminTest } from '../../test/adminPageHelpers.jsx';
+import { expectStableTyping } from '../../test/remountGuard.js';
 import ReportPage from './ReportPage.jsx';
 
 const NOW = new Date('2026-11-26T06:30:00.000Z');
@@ -164,6 +166,20 @@ describe('ReportPage', () => {
       .toEqual({ customerId: '7', taxType: 'INTRA' });
     expect(screen.getByTestId('current-search')).toHaveTextContent('customerId=7');
     expect(screen.getByTestId('current-search')).toHaveTextContent('taxType=INTRA');
+  });
+
+  it('keeps free-text report filters stable while typing', async () => {
+    const user = userEvent.setup();
+    renderReport({
+      catalog: [catalogEntry({
+        filters: [
+          ...PERIOD_FILTERS,
+          { name: 'searchTerm', type: 'text', description: 'Search report rows' }
+        ]
+      })]
+    });
+    await screen.findByText('INV/2026-27/0001');
+    await expectStableTyping(user, () => screen.getByRole('textbox', { name: /Search Term/ }), 'invoice search');
   });
 
   it('shows API sections as tabs and switches the visible table', async () => {

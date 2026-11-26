@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { useEffect, useState } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRegistry } from '../../../app/registry.js';
 import { RegistryProvider } from '../../../app/RegistryContext.jsx';
 import { AuthProvider } from '../../../context/AuthContext.jsx';
@@ -8,9 +10,19 @@ import { ToastProvider } from '../../../context/ToastContext.jsx';
 import { api } from '../../../lib/api.js';
 import { saveSession } from '../../../lib/session.js';
 import { createMockAdapter } from '../../../test/mockAdapter.js';
+import { expectStableAcrossRefresh, expectStableTyping } from '../../../test/remountGuard.js';
 import OrderDetailPage from './OrderDetailPage.jsx';
 
 const ADMIN = { id: 1, name: 'Admin User', email: 'admin@demo.com', role: 'ADMIN' };
+
+function RefreshingOrderDetail() {
+  const [, setRefreshTick] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => setRefreshTick((tick) => tick + 1), 60000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return <OrderDetailPage />;
+}
 
 function order(status = 'SUBMITTED', customerName = 'Retailer A', overrides = {}) {
   const qty = customerName === 'Retailer A' ? 150 : 120;
@@ -73,7 +85,12 @@ function availability(customerName = 'Retailer A') {
   };
 }
 
-function renderDetail({ role = 'ADMIN', customerName = 'Retailer A', routes = {} } = {}) {
+function renderDetail({
+  role = 'ADMIN',
+  customerName = 'Retailer A',
+  routes = {},
+  backgroundRefresh = false
+} = {}) {
   const user = { ...ADMIN, role };
   const orderId = customerName === 'Retailer A' ? 21 : 22;
   saveSession({ token: 'test-token', user });
@@ -90,7 +107,10 @@ function renderDetail({ role = 'ADMIN', customerName = 'Retailer A', routes = {}
         <AuthProvider>
           <RegistryProvider value={createRegistry()}>
             <Routes>
-              <Route element={<OrderDetailPage />} path="/orders/:id" />
+              <Route
+                element={backgroundRefresh ? <RefreshingOrderDetail /> : <OrderDetailPage />}
+                path="/orders/:id"
+              />
             </Routes>
           </RegistryProvider>
         </AuthProvider>
@@ -104,6 +124,10 @@ describe('OrderDetailPage', () => {
   beforeEach(() => {
     localStorage.clear();
     sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('shows Retailer A as covered from the availability response', async () => {
@@ -125,6 +149,20 @@ describe('OrderDetailPage', () => {
     fireEvent.change(quantity, { target: { value: '88' } });
     expect(screen.getByText('Rs 4,400.00')).toBeInTheDocument();
     expect(screen.getByText('Covered')).toBeInTheDocument();
+  });
+
+  it('keeps approval quantity and price controls stable while typing', async () => {
+    const user = userEvent.setup();
+    renderDetail();
+    await screen.findByText('Covered');
+    const quantity = screen.getByLabelText('Approved quantity for Murukku 200 g');
+    await user.clear(quantity);
+    await expectStableTyping(user, () => screen.getByLabelText('Approved quantity for Murukku 200 g'), '88');
+    await expectStableTyping(
+      user,
+      () => screen.getByLabelText('Approved price for Murukku 200 g in rupees'),
+      '48'
+    );
   });
 
   it('sends the real approve payload and reloads the updated status', async () => {
@@ -186,7 +224,7 @@ describe('OrderDetailPage', () => {
       .toBeInTheDocument();
     expect(adapter.calls.some((call) => call.url === '/orders/22/approve')).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Set to free stock' }));
-    expect(screen.getByLabelText('Approved quantity for Murukku 200 g')).toHaveValue(88);
+    expect(screen.getByLabelText('Approved quantity for Murukku 200 g')).toHaveValue('88');
     expect(screen.getByText('Rs 4,400.00')).toBeInTheDocument();
   });
 
@@ -210,15 +248,29 @@ describe('OrderDetailPage', () => {
       .toBeInTheDocument();
     expect(adapter.calls.some((call) => call.url === '/orders/21/reject')).toBe(false);
 
-    fireEvent.change(screen.getByRole('textbox', { name: /Reason/ }), {
-      target: { value: 'No stock available' }
-    });
+    const user = userEvent.setup();
+    await expectStableTyping(user, () => screen.getByRole('textbox', { name: 'Reason' }), 'No stock available');
     fireEvent.click(screen.getByRole('button', { name: 'Confirm rejection' }));
     await waitFor(() => {
       expect(adapter.calls.find((call) => call.url === '/orders/21/reject')?.data)
         .toEqual({ reason: 'No stock available' });
     });
     expect(await screen.findByText('REJECTED')).toBeInTheDocument();
+  });
+
+  it('keeps rejection typing stable across a 70-second order-page refresh interval', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderDetail({ backgroundRefresh: true });
+    await screen.findByText('Covered');
+    fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
+    const text = 'No stock available, please review';
+    await expectStableAcrossRefresh(
+      user,
+      () => screen.getByRole('textbox', { name: 'Reason' }),
+      text,
+      Math.ceil(70000 / text.length)
+    );
   });
 
   it('does not send duplicate approval requests on repeated confirmation clicks', async () => {

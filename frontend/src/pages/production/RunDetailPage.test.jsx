@@ -1,7 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ProductionTestProviders, prepareProductionTest } from '../../test/productionPageHelpers.jsx';
+import { expectStableTyping } from '../../test/remountGuard.js';
 import RunDetailPage from './RunDetailPage.jsx';
 
 function run(status = 'ISSUED', overrides = {}) {
@@ -225,8 +227,9 @@ describe('RunDetailPage', () => {
       }
     });
     await screen.findByText('Shift labour');
-    fireEvent.change(screen.getByLabelText('Amount (Rs)'), { target: { value: '1200' } });
-    fireEvent.change(screen.getByLabelText('Note (optional)'), { target: { value: 'Shift labour' } });
+    const user = userEvent.setup();
+    await expectStableTyping(user, () => screen.getByLabelText('Amount (Rs)'), '1200');
+    await expectStableTyping(user, () => screen.getByLabelText('Note (optional)'), 'Shift labour');
     fireEvent.click(screen.getByRole('button', { name: 'Add overhead' }));
     await waitFor(() => {
       expect(adapter.calls.find((call) => call.method === 'post' && call.url === '/production/runs/41/overheads')?.data)
@@ -241,6 +244,19 @@ describe('RunDetailPage', () => {
         .toBe(true);
     });
 
+  });
+
+  it('keeps production completion quantities and notes stable while typing', async () => {
+    const user = userEvent.setup();
+    renderRunPage();
+    await screen.findByText('RUN/2026-27/0001');
+    await expectStableTyping(user, () => screen.getByLabelText('Good packets'), '188');
+    await expectStableTyping(user, () => screen.getByLabelText('Rejected packets'), '2');
+    await expectStableTyping(
+      user,
+      () => screen.getByLabelText('Completion notes (optional)'),
+      'Evening production shift'
+    );
   });
 
   it('shows the server message when a completion is rejected as already closed', async () => {
@@ -280,9 +296,8 @@ describe('RunDetailPage', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm cancellation' }));
     expect(await within(dialog).findByText('Enter a cancellation reason.')).toBeInTheDocument();
     expect(adapter.calls.some((call) => call.url === '/production/runs/41/cancel')).toBe(false);
-    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Reason' }), {
-      target: { value: 'Wrong batch selected' }
-    });
+    const user = userEvent.setup();
+    await expectStableTyping(user, () => within(dialog).getByRole('textbox', { name: 'Reason' }), 'Wrong batch selected');
     const confirm = within(dialog).getByRole('button', { name: 'Confirm cancellation' });
     fireEvent.click(confirm);
     fireEvent.click(confirm);

@@ -114,8 +114,8 @@ export default function AdjustmentsPage() {
       setSavedAdjustment(data);
       setQty('');
       setNote('');
-      stockRequest.reload();
-      adjustmentsRequest.reload();
+      stockRequest.reload({ silent: true });
+      adjustmentsRequest.reload({ silent: true });
     } catch (error) {
       const apiError = toApiError(error);
       const shortBy = apiError.code === 'INSUFFICIENT_STOCK'

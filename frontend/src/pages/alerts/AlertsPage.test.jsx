@@ -1,7 +1,9 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminTestProviders, prepareAdminTest } from '../../test/adminPageHelpers.jsx';
+import { expectStableAcrossRefresh } from '../../test/remountGuard.js';
 import AlertsPage from './AlertsPage.jsx';
 
 const NOW = new Date('2026-11-26T12:00:00+05:30');
@@ -266,5 +268,22 @@ describe('AlertsPage', () => {
     });
     expect(adapter.calls.filter((call) => call.url === '/production/variance'))
       .toHaveLength(callsAfterUnmount);
+  });
+
+  it('keeps an active reorder field stable through more than 70 seconds of refreshes', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const { unmount } = renderAlerts();
+    await flushAsyncUpdates();
+    fireEvent.click(screen.getByText('Reorder levels'));
+    const input = screen.getByRole('textbox', { name: 'Flour reorder level (kg)' });
+    await user.clear(input);
+    await expectStableAcrossRefresh(
+      user,
+      () => screen.getByRole('textbox', { name: 'Flour reorder level (kg)' }),
+      'typing-through-refresh',
+      3200
+    );
+    unmount();
   });
 });

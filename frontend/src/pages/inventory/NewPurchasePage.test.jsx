@@ -1,7 +1,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { InventoryTestProviders, prepareInventoryTest } from '../../test/inventoryPageHelpers.jsx';
+import { expectStableTyping } from '../../test/remountGuard.js';
 import NewPurchasePage from './NewPurchasePage.jsx';
 
 const suppliers = [{ id: 8, name: 'Flour Supplier', isActive: true }];
@@ -69,6 +71,17 @@ describe('NewPurchasePage', () => {
   beforeEach(() => {
     localStorage.clear();
     sessionStorage.clear();
+  });
+
+  it('keeps purchase quantity, rate, invoice number, and notes stable while typing', async () => {
+    const user = userEvent.setup();
+    renderNewPurchase();
+    await screen.findByRole('combobox', { name: /Supplier/ });
+
+    await expectStableTyping(user, () => screen.getByLabelText(/Supplier invoice number/), 'INV-2026-001');
+    await expectStableTyping(user, () => screen.getByLabelText('Notes'), 'Urgent delivery');
+    await expectStableTyping(user, () => screen.getByLabelText(/Quantity/), '60.5');
+    await expectStableTyping(user, () => screen.getByLabelText(/Rate per unit/), '45.25');
   });
 
   it('estimates Rs 2,700.00, sends decimal strings and shows server-returned amounts', async () => {

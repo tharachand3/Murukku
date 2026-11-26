@@ -294,13 +294,13 @@ export default function AlertsPage({ now }) {
   ]);
 
   const refreshAll = useCallback(() => {
-    varianceRequest.reload();
-    lowStockRequest.reload();
+    varianceRequest.reload({ silent: true });
+    lowStockRequest.reload({ silent: true });
     if (canViewShortages) {
-      shortagesRequest.reload();
+      shortagesRequest.reload({ silent: true });
     }
     if (isAdmin) {
-      reorderRequest.reload();
+      reorderRequest.reload({ silent: true });
     }
   }, [
     canViewShortages,
@@ -337,6 +337,10 @@ export default function AlertsPage({ now }) {
     || lowStockRequest.loading
     || (canViewShortages && shortagesRequest.loading)
     || (isAdmin && reorderRequest.loading);
+  const anyRefreshing = varianceRequest.refreshing
+    || lowStockRequest.refreshing
+    || (canViewShortages && shortagesRequest.refreshing)
+    || (isAdmin && reorderRequest.refreshing);
 
   async function saveReorderLevel(item) {
     if (savingIdsRef.current.has(item.id)) {
@@ -352,8 +356,8 @@ export default function AlertsPage({ now }) {
         unitFactor(item.displayUnit.code)
       );
       await api.patch(`/items/${item.id}`, { reorderLevelBase });
-      lowStockRequest.reload();
-      reorderRequest.reload();
+      lowStockRequest.reload({ silent: true });
+      reorderRequest.reload({ silent: true });
       toast.success('Reorder level saved.');
     } catch (error) {
       const message = error instanceof TypeError || error instanceof RangeError
@@ -401,7 +405,7 @@ export default function AlertsPage({ now }) {
     <main className="mx-auto max-w-7xl space-y-5 pb-8">
       <PageHeader
         actions={(
-          <Button disabled={anyLoading} onClick={refreshAll} variant="secondary">
+          <Button disabled={anyLoading || anyRefreshing} onClick={refreshAll} variant="secondary">
             Refresh
           </Button>
         )}

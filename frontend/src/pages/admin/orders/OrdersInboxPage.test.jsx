@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createRegistry } from '../../../app/registry.js';
@@ -8,6 +9,7 @@ import { ToastProvider } from '../../../context/ToastContext.jsx';
 import { api } from '../../../lib/api.js';
 import { saveSession } from '../../../lib/session.js';
 import { createMockAdapter } from '../../../test/mockAdapter.js';
+import { expectStableTyping } from '../../../test/remountGuard.js';
 import OrdersInboxPage from './OrdersInboxPage.jsx';
 
 const ADMIN = { id: 1, name: 'Admin User', email: 'admin@demo.com', role: 'ADMIN' };
@@ -120,6 +122,16 @@ describe('OrdersInboxPage', () => {
     const query = new URLSearchParams(screen.getByTestId('location-search').textContent);
     expect(query.get('customerId')).toBe('10');
     expect(query.get('salesmanId')).toBe('7');
+  });
+
+  it('keeps the salesman ID filter stable while typing', async () => {
+    const user = userEvent.setup();
+    renderInbox();
+    await screen.findByText('ORD/2026-27/0001');
+    const input = screen.getByLabelText('Salesman ID');
+    expect(input).toHaveAttribute('type', 'text');
+    expect(input).toHaveAttribute('inputmode', 'numeric');
+    await expectStableTyping(user, () => screen.getByLabelText('Salesman ID'), '17');
   });
 
   it('uses the API page values with pagination', async () => {

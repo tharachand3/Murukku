@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRegistry } from '../app/registry.js';
@@ -9,6 +10,7 @@ import { DEMO_LOGINS, DEMO_PASSWORD } from '../config/demoLogins.js';
 import { api } from '../lib/api.js';
 import { loadSession, saveSession } from '../lib/session.js';
 import { createMockAdapter, mockNetworkError } from '../test/mockAdapter.js';
+import { expectStableTyping } from '../test/remountGuard.js';
 import LoginPage from './LoginPage.jsx';
 
 function makeRegistry() {
@@ -138,6 +140,14 @@ describe('LoginPage', () => {
     expect(await screen.findByText('Email is required')).toBeInTheDocument();
     expect(screen.getByText('Password is required')).toBeInTheDocument();
     expect(adapter.calls).toHaveLength(0);
+  });
+
+  it('keeps the email and password controls stable while typing', async () => {
+    const user = userEvent.setup();
+    renderLogin(makeRegistry());
+
+    await expectStableTyping(user, () => screen.getByLabelText('Email'), 'admin@demo.com');
+    await expectStableTyping(user, () => screen.getByLabelText('Password'), 'secret123');
   });
 
   it('blocks malformed email addresses without sending a request', async () => {

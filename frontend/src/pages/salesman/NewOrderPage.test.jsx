@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -10,6 +11,7 @@ import { ToastProvider } from '../../context/ToastContext.jsx';
 import { api } from '../../lib/api.js';
 import { createMockAdapter, mockNetworkError } from '../../test/mockAdapter.js';
 import { enqueue, flush, list } from '../../lib/orderQueue.js';
+import { expectStableTyping } from '../../test/remountGuard.js';
 import NewOrderPage from './NewOrderPage.jsx';
 
 const customers = [
@@ -102,6 +104,22 @@ describe('NewOrderPage', () => {
 
     expect(screen.getByText('Rs 7,500.00')).toBeInTheDocument();
     expect(screen.getByText('1 lines · 150 packets')).toBeInTheDocument();
+  });
+
+  it('keeps salesman quantity and notes stable while typing', async () => {
+    const user = userEvent.setup();
+    renderWithProviders();
+    await chooseCustomer();
+
+    const quantity = screen.getByRole('textbox', { name: 'Murukku quantity' });
+    await user.clear(quantity);
+    await expectStableTyping(
+      user,
+      () => screen.getByRole('textbox', { name: 'Murukku quantity' }),
+      '150'
+    );
+    fireEvent.click(screen.getByText('Optional notes'));
+    await expectStableTyping(user, () => screen.getByLabelText('Notes'), 'Deliver after noon');
   });
 
   it('shows only finished catalog items and never requests stock summary', async () => {

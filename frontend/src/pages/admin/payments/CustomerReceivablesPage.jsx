@@ -151,7 +151,7 @@ export default function CustomerReceivablesPage() {
           onClose={() => setSelectedInvoice(null)}
           onSaved={() => {
             setSelectedInvoice(null);
-            request.reload();
+            request.reload({ silent: true });
           }}
           open
         />

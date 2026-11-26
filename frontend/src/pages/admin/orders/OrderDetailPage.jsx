@@ -147,8 +147,8 @@ export default function OrderDetailPage() {
   const approvedBy = order?.timeline?.find((entry) => entry.action === 'APPROVE');
 
   const reload = () => {
-    orderRequest.reload();
-    if (canReadAvailability) availabilityRequest.reload();
+    orderRequest.reload({ silent: true });
+    if (canReadAvailability) availabilityRequest.reload({ silent: true });
   };
 
   const startApproval = () => {
@@ -436,6 +436,7 @@ export default function OrderDetailPage() {
                           disabled={pendingAction !== ''}
                           error={quantityError}
                           id={`approved-qty-${line.lineId}`}
+                          inputMode="numeric"
                           label={`Approved quantity for ${line.name}`}
                           max="100000"
                           min="0"
@@ -449,7 +450,7 @@ export default function OrderDetailPage() {
                             setInsufficientStock(null);
                             setActionSuccess('');
                           }}
-                          type="number"
+                          type="text"
                           value={draft.approvedQty}
                         />
                         {stockLine && parsedQuantity(draft.approvedQty) !== null

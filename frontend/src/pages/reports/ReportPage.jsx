@@ -195,8 +195,8 @@ function ReportTable({ section }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 bg-white">
-          {section.rows.map((row, rowIndex) => (
-            <tr key={row.id ?? row.key ?? rowIndex}>
+          {section.rows.map((row) => (
+            <tr key={row.id ?? row.key ?? JSON.stringify(row)}>
               {columns.map((column) => renderCell(column, row[column.key]))}
             </tr>
           ))}

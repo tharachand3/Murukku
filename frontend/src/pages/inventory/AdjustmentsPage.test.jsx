@@ -1,7 +1,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { InventoryTestProviders, prepareInventoryTest } from '../../test/inventoryPageHelpers.jsx';
+import { expectStableTyping } from '../../test/remountGuard.js';
 import AdjustmentsPage from './AdjustmentsPage.jsx';
 
 const flour = {
@@ -48,6 +50,14 @@ describe('AdjustmentsPage', () => {
   beforeEach(() => {
     localStorage.clear();
     sessionStorage.clear();
+  });
+
+  it('keeps adjustment quantity and note stable while typing', async () => {
+    const user = userEvent.setup();
+    renderAdjustments();
+    await screen.findByText('ADJ/2026-27/0001');
+    await expectStableTyping(user, () => screen.getByLabelText(/Quantity/), '12.5');
+    await expectStableTyping(user, () => screen.getByLabelText('Note'), 'Spillage near mixer');
   });
 
   it('posts the OUT adjustment payload and shows the new document number', async () => {

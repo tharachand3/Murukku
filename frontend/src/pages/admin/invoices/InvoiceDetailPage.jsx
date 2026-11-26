@@ -73,9 +73,9 @@ export default function InvoiceDetailPage() {
   const downloadPending = useRef(false);
 
   const reload = () => {
-    invoiceRequest.reload();
-    dispatchRequest.reload();
-    if (invoice?.customerId) outstandingRequest.reload();
+    invoiceRequest.reload({ silent: true });
+    dispatchRequest.reload({ silent: true });
+    if (invoice?.customerId) outstandingRequest.reload({ silent: true });
   };
 
   const downloadPdf = async () => {
@@ -375,7 +375,7 @@ export default function InvoiceDetailPage() {
             onClose={() => setDispatchOpen(false)}
             onSaved={() => {
               setDispatchOpen(false);
-              dispatchRequest.reload();
+              dispatchRequest.reload({ silent: true });
             }}
             open={dispatchOpen}
           />
@@ -386,7 +386,7 @@ export default function InvoiceDetailPage() {
             onClose={() => setPaymentOpen(false)}
             onSaved={() => {
               setPaymentOpen(false);
-              outstandingRequest.reload();
+              outstandingRequest.reload({ silent: true });
             }}
             open={paymentOpen}
           />

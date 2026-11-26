@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from './Button.jsx';
 
 function clamp(value, min, max) {
@@ -8,8 +8,16 @@ function clamp(value, min, max) {
 // Integer-only quantity control with bounded 44px touch targets.
 export function QtyStepper({ value, onChange, min = 0, max = Number.MAX_SAFE_INTEGER, label = 'Quantity' }) {
   const [draft, setDraft] = useState(String(value));
+  const pendingDraftValue = useRef(null);
 
-  useEffect(() => setDraft(String(value)), [value]);
+  useEffect(() => {
+    if (pendingDraftValue.current === value) {
+      pendingDraftValue.current = null;
+      return;
+    }
+    pendingDraftValue.current = null;
+    setDraft(String(value));
+  }, [value]);
 
   const commit = (nextValue) => {
     const bounded = clamp(nextValue, min, max);
@@ -36,12 +44,19 @@ export function QtyStepper({ value, onChange, min = 0, max = Number.MAX_SAFE_INT
         inputMode="numeric"
         max={max}
         min={min}
-        onBlur={() => setDraft(String(value))}
+        onBlur={() => {
+          pendingDraftValue.current = null;
+          setDraft(String(value));
+        }}
         onChange={(event) => {
           const next = event.target.value;
           setDraft(next);
           if (/^\d+$/.test(next) && Number.isSafeInteger(Number(next))) {
-            commit(Number(next));
+            const bounded = clamp(Number(next), min, max);
+            if (bounded !== value) {
+              pendingDraftValue.current = bounded;
+            }
+            onChange(bounded);
           }
         }}
         type="text"

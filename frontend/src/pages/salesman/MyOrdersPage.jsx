@@ -58,7 +58,10 @@ export default function MyOrdersPage({ now = new Date() }) {
     setMoreError(null);
   }, [queryKey]);
 
-  const refresh = ordersRequest.reload;
+  const refresh = useCallback(
+    () => ordersRequest.reload({ silent: true }),
+    [ordersRequest.reload]
+  );
   useEffect(() => {
     let timer = null;
     const syncVisibilityTimer = () => {

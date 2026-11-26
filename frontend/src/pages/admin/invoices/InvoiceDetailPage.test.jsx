@@ -1,7 +1,9 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminTestProviders, prepareAdminTest } from '../../../test/adminPageHelpers.jsx';
+import { expectStableTyping } from '../../../test/remountGuard.js';
 import InvoiceDetailPage from './InvoiceDetailPage.jsx';
 
 function invoice(overrides = {}) {
@@ -259,7 +261,7 @@ describe('InvoiceDetailPage', () => {
     const dialog = screen.getByRole('dialog', { name: 'Dispatch invoice' });
     const firstQty = within(dialog).getByLabelText('Murukku 200 g (remaining 150)');
     const secondQty = within(dialog).getByLabelText('Carton (remaining 4)');
-    expect(firstQty).toHaveValue(150);
+    expect(firstQty).toHaveValue('150');
     fireEvent.change(firstQty, { target: { value: '100' } });
     fireEvent.change(secondQty, { target: { value: '0' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save dispatch' }));
@@ -267,6 +269,24 @@ describe('InvoiceDetailPage', () => {
       expect(adapter.calls.find((call) => call.method === 'post' && call.url === '/dispatches')?.data)
         .toEqual({ invoiceId: 7, lines: [{ itemId: 5, qty: 100 }] });
     });
+  });
+
+  it('keeps dispatch quantity, vehicle number, and notes stable while typing', async () => {
+    const user = userEvent.setup();
+    renderInvoicePage();
+    await screen.findByText('INV/2026-27/0001');
+    fireEvent.click(screen.getByRole('button', { name: 'Dispatch' }));
+    const dialog = screen.getByRole('dialog', { name: 'Dispatch invoice' });
+
+    const quantity = within(dialog).getByLabelText('Murukku 200 g (remaining 150)');
+    await user.clear(quantity);
+    await expectStableTyping(
+      user,
+      () => within(dialog).getByLabelText('Murukku 200 g (remaining 150)'),
+      '88'
+    );
+    await expectStableTyping(user, () => within(dialog).getByLabelText('Vehicle number (optional)'), 'TN 45 AB 1234');
+    await expectStableTyping(user, () => within(dialog).getByLabelText('Notes (optional)'), 'Deliver after noon');
   });
 
   it('explains stock shortage fields returned by the dispatch API', async () => {
@@ -329,9 +349,12 @@ describe('InvoiceDetailPage', () => {
     expect(await within(dialog).findByText('Enter a cancellation reason between 5 and 300 characters.'))
       .toBeInTheDocument();
     expect(adapter.calls.some((call) => call.url === '/invoices/7/cancel')).toBe(false);
-    fireEvent.change(within(dialog).getByRole('textbox', { name: /Reason/ }), {
-      target: { value: 'Customer requested cancellation' }
-    });
+    const user = userEvent.setup();
+    await expectStableTyping(
+      user,
+      () => within(dialog).getByRole('textbox', { name: 'Reason' }),
+      'Customer requested cancellation'
+    );
     const submit = within(dialog).getByRole('button', { name: 'Cancel invoice' });
     fireEvent.click(submit);
     fireEvent.click(submit);

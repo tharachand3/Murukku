@@ -121,6 +121,7 @@ export default function DispatchModal({
               key={line.itemId}
               error={errors[`qty-${line.itemId}`]}
               id={`dispatch-qty-${line.itemId}`}
+              inputMode="numeric"
               label={`${line.name} (remaining ${line.remainingQty})`}
               max={line.remainingQty}
               min="0"
@@ -129,8 +130,7 @@ export default function DispatchModal({
                 setErrors((current) => ({ ...current, [`qty-${line.itemId}`]: undefined, lines: undefined }));
                 setErrorMessage('');
               }}
-              step="1"
-              type="number"
+              type="text"
               value={quantities[line.itemId] ?? String(line.remainingQty)}
             />
           ))}

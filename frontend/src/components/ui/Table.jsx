@@ -16,8 +16,17 @@ export function Table({ columns, rows, emptyMessage = 'No rows to display' }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 bg-white">
-          {rows.map((row, rowIndex) => (
-            <tr key={row.id ?? row.key ?? rowIndex}>
+          {rows.map((row) => (
+            <tr key={
+              row.id
+              ?? row.key
+              ?? row.itemId
+              ?? row.customerId
+              ?? row.runId
+              ?? row.invoiceId
+              ?? row.orderId
+              ?? JSON.stringify(row)
+            }>
               {columns.map((column) => (
                 <td className="whitespace-nowrap px-4 py-3 text-slate-800" key={column.key}>
                   {column.render ? column.render(row) : row[column.key]}

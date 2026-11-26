@@ -1,7 +1,9 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { AdminTestProviders, prepareAdminTest } from '../../../test/adminPageHelpers.jsx';
+import { expectStableTyping } from '../../../test/remountGuard.js';
 import { PaymentModal } from './PaymentModal.jsx';
 
 function renderPaymentModal(routes = {}, duePaise = 387500) {
@@ -29,6 +31,7 @@ describe('PaymentModal', () => {
   });
 
   it('prefills the due and sends a rupee amount as integer paise', async () => {
+    const user = userEvent.setup();
     const adapter = renderPaymentModal({
       'POST /payments': {
         status: 201,
@@ -40,9 +43,7 @@ describe('PaymentModal', () => {
       target: { value: '4000' }
     });
     fireEvent.change(screen.getByLabelText('Payment mode'), { target: { value: 'UPI' } });
-    fireEvent.change(screen.getByRole('textbox', { name: /Reference/ }), {
-      target: { value: 'UPI-7788' }
-    });
+    await expectStableTyping(user, () => screen.getByRole('textbox', { name: 'Reference' }), 'UPI-7788');
     fireEvent.click(screen.getByRole('button', { name: 'Save payment' }));
     await waitFor(() => {
       expect(adapter.calls.find((call) => call.method === 'post' && call.url === '/payments')?.data)

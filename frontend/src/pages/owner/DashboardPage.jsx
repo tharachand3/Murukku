@@ -118,7 +118,7 @@ export default function DashboardPage() {
       if (document.visibilityState === 'visible') {
         timer = window.setInterval(() => {
           if (document.visibilityState === 'visible') {
-            request.reload();
+            request.reload({ silent: true });
           }
         }, 60000);
       }

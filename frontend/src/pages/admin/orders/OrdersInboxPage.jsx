@@ -182,9 +182,9 @@ export default function OrdersInboxPage({ now = new Date() }) {
           <p className="mt-1 text-sm text-slate-600">Review submitted orders and their approval status.</p>
         </div>
         <Button
-          disabled={ordersRequest.loading}
+          disabled={ordersRequest.loading || ordersRequest.refreshing}
           loading={ordersRequest.loading}
-          onClick={ordersRequest.reload}
+          onClick={() => ordersRequest.reload({ silent: true })}
           variant="secondary"
         >
           Refresh
@@ -234,11 +234,13 @@ export default function OrdersInboxPage({ now = new Date() }) {
         </div>
         <Input
           disabled={ordersRequest.loading}
+          inputMode="numeric"
           label="Salesman ID"
           min="1"
           onChange={(event) => setSalesmanDraft(event.target.value)}
+          pattern="0*[1-9][0-9]*"
           placeholder="Filter by salesman ID"
-          type="number"
+          type="text"
           value={salesmanDraft}
         />
         <Input

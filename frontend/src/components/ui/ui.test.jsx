@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
+import { expectStableTyping } from '../../test/remountGuard.js';
 import { Button } from './Button.jsx';
 import { ConfirmDialog } from './ConfirmDialog.jsx';
 import { Money } from './Money.jsx';
@@ -8,6 +10,36 @@ import { Modal } from './Modal.jsx';
 import { Pagination } from './Pagination.jsx';
 import { QtyStepper } from './QtyStepper.jsx';
 import { formatPaise } from '../../lib/money.js';
+
+function EditableModal() {
+  const [value, setValue] = useState('');
+  return (
+    <Modal open title="Details" onClose={() => {}}>
+      <input
+        aria-label="Modal text"
+        onChange={(event) => setValue(event.target.value)}
+        value={value}
+      />
+    </Modal>
+  );
+}
+
+function QuantityHarness() {
+  const [value, setValue] = useState(0);
+  return <QtyStepper value={value} max={100} onChange={setValue} />;
+}
+
+function OpenableModal() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button onClick={() => setOpen(true)} type="button">Open details</button>
+      <Modal open={open} title="Details" onClose={() => setOpen(false)}>
+        <button onClick={() => setOpen(false)} type="button">Close details</button>
+      </Modal>
+    </>
+  );
+}
 
 describe('UI primitives', () => {
   it('renders formatted money from integer paise', () => {
@@ -39,6 +71,22 @@ describe('UI primitives', () => {
     expect(dialog).toHaveFocus();
     await user.keyboard('{Escape}');
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('restores focus to the opener after a modal closes', async () => {
+    const user = userEvent.setup();
+    render(<OpenableModal />);
+    const opener = screen.getByRole('button', { name: 'Open details' });
+    await user.click(opener);
+    expect(screen.getByRole('dialog', { name: 'Details' })).toHaveFocus();
+    await user.keyboard('{Escape}');
+    expect(opener).toHaveFocus();
+  });
+
+  it('keeps focus in a modal field while its owner rerenders on every keystroke', async () => {
+    const user = userEvent.setup();
+    render(<EditableModal />);
+    await expectStableTyping(user, () => screen.getByRole('textbox', { name: 'Modal text' }), 'stable');
   });
 
   it('renders confirmation actions', async () => {
@@ -73,5 +121,30 @@ describe('UI primitives', () => {
     await user.clear(input);
     await user.type(input, '99');
     expect(onChange).toHaveBeenLastCalledWith(3);
+  });
+
+  it('keeps the typed quantity draft unchanged until the field blurs', async () => {
+    const user = userEvent.setup();
+    render(<QuantityHarness />);
+    const input = screen.getByRole('textbox', { name: 'Quantity' });
+    await user.clear(input);
+    await expectStableTyping(user, () => screen.getByRole('textbox', { name: 'Quantity' }), '01');
+    await user.tab();
+    expect(input).toHaveValue('1');
+  });
+
+  it('preserves a quantity selection during edits and does not wheel-step it', async () => {
+    const user = userEvent.setup();
+    render(<QuantityHarness />);
+    const input = screen.getByRole('textbox', { name: 'Quantity' });
+    await user.clear(input);
+    await user.type(input, '123');
+    input.setSelectionRange(1, 2);
+    await user.keyboard('9');
+
+    expect(input).toHaveValue('193');
+    expect(input.selectionStart).toBe(2);
+    fireEvent.wheel(input);
+    expect(input).toHaveValue('193');
   });
 });
