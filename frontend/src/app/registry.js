@@ -256,3 +256,53 @@ registerRoute({
   title: 'Production run details',
   nav: null
 });
+
+import StockPage from '../pages/inventory/StockPage.jsx';
+
+registerRoute({
+  path: '/stock',
+  component: StockPage,
+  roles: ['ADMIN', 'PRODUCTION', 'ACCOUNTANT', 'OWNER'],
+  title: 'Stock',
+  nav: { label: 'Stock', group: 'Inventory', order: 10, mobile: false }
+});
+
+import StockLedgerPage from '../pages/inventory/StockLedgerPage.jsx';
+
+registerRoute({
+  path: '/stock/:itemId',
+  component: StockLedgerPage,
+  roles: ['ADMIN', 'PRODUCTION', 'ACCOUNTANT', 'OWNER'],
+  title: 'Stock ledger',
+  nav: null
+});
+
+import PurchasesPage from '../pages/inventory/PurchasesPage.jsx';
+
+registerRoute({
+  path: '/purchases',
+  component: PurchasesPage,
+  roles: ['ADMIN', 'PRODUCTION', 'ACCOUNTANT', 'OWNER'],
+  title: 'Purchases',
+  nav: { label: 'Purchases', group: 'Inventory', order: 20, mobile: false }
+});
+
+import NewPurchasePage from '../pages/inventory/NewPurchasePage.jsx';
+
+registerRoute({
+  path: '/purchases/new',
+  component: NewPurchasePage,
+  roles: ['PRODUCTION', 'ADMIN'],
+  title: 'New purchase',
+  nav: null
+});
+
+import AdjustmentsPage from '../pages/inventory/AdjustmentsPage.jsx';
+
+registerRoute({
+  path: '/stock/adjustments',
+  component: AdjustmentsPage,
+  roles: ['ADMIN', 'PRODUCTION', 'ACCOUNTANT', 'OWNER'],
+  title: 'Stock adjustments',
+  nav: { label: 'Adjustments', group: 'Inventory', order: 30, mobile: false }
+});
