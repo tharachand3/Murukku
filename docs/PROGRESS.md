@@ -2,14 +2,14 @@
 Last updated: 2026-11-26 by Copilot
 
 ## Next Step
-Step 48 - Salesman mobile order screen and offline order queue
+Step 49 - Salesman orders and customer-wise sales
 BACKEND COMPLETE through step 45
-FRONTEND COMPLETE through step 47
+FRONTEND COMPLETE through step 48
 
 ## How to run (keep accurate)
 - Install with `npm --prefix backend install`; start/stop PostgreSQL on 5433 with `npm run db:up` / `npm run db:down`. Create `oda_test` once with `docker compose exec -T db createdb -U oda oda_test`; set `DATABASE_URL` to `postgresql://oda:oda@localhost:5433/oda_test?schema=public`, run `npx prisma migrate deploy` and `npx prisma generate`, then unset it. Tests refuse non-test databases; the invoice snapshot migration is applied.
 - Run backend tests from `backend/` with `npm test`; frontend tests with `npm --prefix frontend test`; build with `npm --prefix frontend run build`. Focused backend suites: exports `npm test -- tests/exports.format.test.js tests/exports.api.test.js`; invoice PDF `npm test -- tests/lib/amountInWords.test.js tests/lib/shareLinks.test.js tests/lib/shareToken.test.js tests/invoiceDocument.test.js tests/invoicePdf.api.test.js`; payments, credit notes, shortage, costing and overhead tests are under `tests/`.
-- Start API/UI with `npm run dev:backend` and `npm run dev:frontend`. Run `npm run bench:play` against a fresh seeded DB (default through step 9; `-- --upto=1` through `-- --upto=9`; `API_URL` overrides); step 9 writes all report exports to `backend/exports/benchmark/`. `npm run bench:invoice-pdf` saves an invoice PDF there and prints share links. Do not reset a database unless explicitly required.
+- Start API/UI with `npm run dev:backend` and `npm run dev:frontend`; sign in as SALESMAN and open `/new-order` to create orders and sync the local queue. Run `npm run bench:play` against a fresh seeded DB (default through step 9; `-- --upto=1` through `-- --upto=9`; `API_URL` overrides); step 9 writes all report exports to `backend/exports/benchmark/`. `npm run bench:invoice-pdf` saves an invoice PDF there and prints share links. Do not reset a database unless explicitly required.
 - Run staged checker from `backend/`: `npm run bench:check -- --stage=opening`; stages are `opening`, `after-purchase`, `after-issue`, `after-run`, `after-dispatch`, and `final`. Costing checks run after purchase/run; dispatch uses `after-dispatch`; payment/shortage use `final`.
 - Demo password `Demo@123` works for the six seeded users; login with `POST /api/auth/login` and send `Authorization: Bearer <token>`. Master writes and invoice/order actions are ADMIN-only; customer reads are assignment-scoped for salesmen. Role and route details are listed under API endpoints.
 - Sales API: SALESMAN creates orders with `POST /api/orders` (`{ clientRef?, customerId, notes?, lines: [{itemId, qty}] }`); price is server-resolved and supplied `clientRef` is idempotent. Orders are scoped for salesmen; use `GET /api/orders/:id`, `/my/customer-sales`, `/shortages`, `/:id/availability`, or `/:id/invoice-preview` per role. Approval edits require `orders:approve`; shortage uses FIFO and the active BOM.
@@ -36,12 +36,13 @@ FRONTEND COMPLETE through step 47
 37 [x] report framework and sales register; 38 [x] customer/product sales reports; 39 [x] GST summary; 40 [x] stock summary and ledger; 41 [x] purchase register; 42 [x] production report; 43 [x] receivables ageing; 44 [x] CSV/XLSX/PDF exports and product costing; 45 [x] GST invoice PDF and share links.
 ### Phase 7 - Frontend
 46 [x] frontend test setup, pure helpers, auth/session providers, toast, UI kit, route registry, role layouts/guards and Home/Status pages.
-47 [x] login and role redirect; 48-56 [ ] salesman orders/customers; admin orders/invoices; production/stock/reports pages; dashboard/alerts.
+47-48 [x] login and role redirect; salesman mobile order and offline queue; 49-56 [ ] salesman order history/sales; admin orders/invoices; production/stock/reports pages; dashboard/alerts.
 ### Phase 8 - Ship
 57-60 [ ] full benchmark/fixes; deployment; README/design note; demo/interview/final audit.
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
 - Step 47 (2026-11-26): Replaced the login stub with validated sign-in, session notice, role-safe redirect and evaluator demo logins. Added login tests and `.env.example`; full frontend suite 70 PASS, build passes. Decisions: demo accounts remain visible unless `VITE_SHOW_DEMO_LOGINS=false`; forgot password is out of scope.
+- Step 48 (2026-11-26): Added `/new-order`, a localStorage offline queue, queue sync hook and reusable queue panel; full frontend suite 93 PASS, build passes. Files: registry, salesman page/component, queue helper/hook and new tests. Decisions: catalog uses `/catalog/order-items?customerId=` for resolved prices; salesman availability exposes `availablePackets`, not `freePackets`; no PWA shell.
 - Step 46 (2026-11-26): Added frontend test infrastructure, paise/IST/error/session helpers, auth/toast contexts, UI kit, route registry, role shell/guards, and Home/Status pages. Added 55 frontend tests; baseline had no test script. Decisions: localStorage session refresh, `useAsync`, append-only registry, public `/status`, and jest-dom v6 for Vitest 2 compatibility; last7 includes today.
 - Step 45 (2026-11-26): Added invoice words, immutable snapshot PDF, integrity checks, authenticated/public sharing, and demo script; full suite 354 PASS, focused suite 39 PASS.
 - Step 44 (2026-11-26): Added CSV/XLSX/PDF exports, catalog metadata, product-costing report, benchmark step 9; full suite 315 PASS, focused export tests 16 PASS.
@@ -101,6 +102,7 @@ FRONTEND COMPLETE through step 47
 - `backend/tests/`: API/unit suites including benchmark helpers, report/export and invoice PDF/share coverage, costing, orders/invoices/dispatch/payments, production and stock; `helpers/db.js` guards test operations to `oda_test`.
 - `frontend/`: React/Vite/Tailwind UI, Vitest/Testing Library, API client and `/api` proxy; `src/{app,components,config,context,hooks,lib,pages,test}` holds routing, UI, role/auth, helpers and test setup.
 - Step 47 frontend files: `src/pages/LoginPage.jsx`, `src/config/demoLogins.js`, `src/pages/LoginPage.test.jsx`, and `.env.example`.
+- Step 48 frontend files: `src/pages/salesman/NewOrderPage.jsx`, `src/pages/salesman/NewOrderPage.test.jsx`, `src/lib/orderQueue.js`, `src/lib/orderQueue.test.js`, `src/hooks/useOrderQueue.js`, `src/hooks/useOrderQueue.test.jsx`, and `src/components/salesman/QueuePanel.jsx`.
 
 ## Frontend structure
 `src/app/registry.js` owns the page registry; add new page imports and `registerRoute` calls only after its marked append-only comment. Route definitions declare path, component, allowed roles, title, optional navigation metadata and home roles. `App.jsx` builds guarded routes from this registry; `AppShell` renders salesman mobile tabs or the staff sidebar. Tests use the mock Axios adapter and provider wrappers; no data-fetching library is used.
@@ -109,6 +111,7 @@ FRONTEND COMPLETE through step 47
 - `/` redirects authenticated users to their role home; anonymous users go to `/login` (`src/App.jsx`).
 - `/home` is available to all five roles (`src/pages/HomePage.jsx`); navigation cards come from registered pages.
 - `/login` is public; redirects signed-in users to an allowed requested page or their registered home (`src/pages/LoginPage.jsx`).
+- `/new-order` is SALESMAN-only; loads assigned customers, backend-priced finished goods and finished availability, and queues failed network submissions (`src/pages/salesman/NewOrderPage.jsx`).
 - `/status` is public and checks `GET /api/health` with a retry state (`src/pages/StatusPage.jsx`).
 - `*` renders the public not-found page; authenticated role failures render the forbidden page (`src/pages/NotFoundPage.jsx`, `src/pages/ForbiddenPage.jsx`).
 
@@ -127,6 +130,7 @@ FRONTEND COMPLETE through step 47
 - Stock availability subtracts outstanding approved/invoiced reservations; purchase cost averages use Decimal rates; adjustment quantities are positive magnitudes with IN/OUT direction, and adjustment history uses `createdAt`.
 
 ## Decisions (deviations from AI_CONTEXT.md and why)
+- Step 48 offline submissions use localStorage key `oda.orderQueue` with backend-compatible idempotent `clientRef`; the page still requires connectivity to load customers/catalog, and no service worker/PWA is included. Order pricing uses the real `/catalog/order-items?customerId=` endpoint, which resolves customer prices before defaults. SALESMAN finished availability returns `availablePackets` without `freePackets`; the UI uses that actual field and does not request stock summary. The order total is taxable-only; GST is added at invoice time.
 - Step 47 demo accounts are intentionally shown to evaluators and controlled by `VITE_SHOW_DEMO_LOGINS`; login redirects only to a registered route allowed for the authenticated role.
 - Frontend step 46 uses localStorage key `oda.session`, refreshes stored users through `/auth/me`, and uses `useAsync` rather than a data library. `/status` remains public; the registry is append-only, with Home registered for all roles. `@testing-library/jest-dom` is pinned to v6 because v8 requires Vitest 5 and conflicts with the required Vitest 2.1.9.
 - DB host port is 5433 because the Windows PostgreSQL service occupies 5432
@@ -177,6 +181,7 @@ FRONTEND COMPLETE through step 47
 
 ## Known issues / TODO
 - Forgot password is not available (out of scope). Frontend install reported 8 audit findings (5 moderate, 1 high, 2 critical); review before deployment.
+- The order page requires a connection to load masters; offline support covers saved order submission/sync only, not a PWA/offline shell.
 - Stock ledger reports reject filters matching more than 20000 movements; narrow period or select item. Purchase GST/input tax credit and supplier-payment tracking are not implemented in v1.
 - Order approval blocks on stock shortage with no force option.
 - Payment edit, delete, and reversal are not available in v1; correction requires a future credit/adjustment workflow.

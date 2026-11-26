@@ -93,3 +93,14 @@ registerRoute({
   nav: { label: 'Home', group: 'Orders', order: 0, mobile: true },
   homeFor: ROLES
 });
+
+import NewOrderPage from '../pages/salesman/NewOrderPage.jsx';
+
+registerRoute({
+  path: '/new-order',
+  component: NewOrderPage,
+  roles: ['SALESMAN'],
+  title: 'New order',
+  nav: { label: 'New order', group: 'Orders', order: 10, mobile: true },
+  homeFor: ['SALESMAN']
+});
