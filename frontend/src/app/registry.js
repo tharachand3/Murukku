@@ -165,3 +165,53 @@ registerRoute({
   title: 'Shortages',
   nav: { label: 'Shortages', group: 'Sales', order: 20, mobile: false }
 });
+
+import InvoicesPage from '../pages/admin/invoices/InvoicesPage.jsx';
+
+registerRoute({
+  path: '/invoices',
+  component: InvoicesPage,
+  roles: ['ADMIN', 'ACCOUNTANT', 'OWNER'],
+  title: 'Invoices',
+  nav: { label: 'Invoices', group: 'Sales', order: 30, mobile: false }
+});
+
+import InvoiceDetailPage from '../pages/admin/invoices/InvoiceDetailPage.jsx';
+
+registerRoute({
+  path: '/invoices/:id',
+  component: InvoiceDetailPage,
+  roles: ['ADMIN', 'ACCOUNTANT', 'OWNER'],
+  title: 'Invoice details',
+  nav: null
+});
+
+import PaymentsPage from '../pages/admin/payments/PaymentsPage.jsx';
+
+registerRoute({
+  path: '/payments',
+  component: PaymentsPage,
+  roles: ['ADMIN', 'ACCOUNTANT', 'OWNER'],
+  title: 'Payments',
+  nav: { label: 'Payments', group: 'Accounts', order: 10, mobile: false }
+});
+
+import ReceivablesPage from '../pages/admin/payments/ReceivablesPage.jsx';
+
+registerRoute({
+  path: '/receivables',
+  component: ReceivablesPage,
+  roles: ['ADMIN', 'ACCOUNTANT', 'OWNER'],
+  title: 'Receivables',
+  nav: { label: 'Receivables', group: 'Accounts', order: 20, mobile: false }
+});
+
+import CustomerReceivablesPage from '../pages/admin/payments/CustomerReceivablesPage.jsx';
+
+registerRoute({
+  path: '/receivables/:customerId',
+  component: CustomerReceivablesPage,
+  roles: ['ADMIN', 'ACCOUNTANT', 'OWNER'],
+  title: 'Customer receivables',
+  nav: null
+});

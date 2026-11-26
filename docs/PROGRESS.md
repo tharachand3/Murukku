@@ -2,9 +2,9 @@
 Last updated: 2026-11-26 by Copilot
 
 ## Next Step
-Step 51 - Admin invoices, dispatch, payments, and receivables
+Step 52 - Production screens: BOM view, new run, actual output
 BACKEND COMPLETE through step 45
-FRONTEND COMPLETE through step 50
+FRONTEND COMPLETE through step 51
 
 ## How to run (keep accurate)
 - Install with `npm --prefix backend install`; start/stop PostgreSQL on 5433 with `npm run db:up` / `npm run db:down`. Create `oda_test` once with `docker compose exec -T db createdb -U oda oda_test`; set `DATABASE_URL` to `postgresql://oda:oda@localhost:5433/oda_test?schema=public`, run `npx prisma migrate deploy` and `npx prisma generate`, then unset it. Tests refuse non-test databases; the invoice snapshot migration is applied.
@@ -36,11 +36,12 @@ FRONTEND COMPLETE through step 50
 37 [x] report framework and sales register; 38 [x] customer/product sales reports; 39 [x] GST summary; 40 [x] stock summary and ledger; 41 [x] purchase register; 42 [x] production report; 43 [x] receivables ageing; 44 [x] CSV/XLSX/PDF exports and product costing; 45 [x] GST invoice PDF and share links.
 ### Phase 7 - Frontend
 46 [x] frontend test setup, pure helpers, auth/session providers, toast, UI kit, route registry, role layouts/guards and Home/Status pages.
-47-49 [x] login and role redirect; salesman mobile order and offline queue; salesman order history, details, and customer-wise sales. 50 [x] admin order inbox, stock-aware detail/approval, and shortages. 51-56 [ ] invoices/payments; production/stock/reports pages; dashboard/alerts.
+47-49 [x] login and role redirect; salesman mobile order and offline queue; salesman order history, details, and customer-wise sales. 50 [x] admin order inbox, stock-aware detail/approval, and shortages. 51 [x] invoices, PDF/share, dispatch, payments, receivables, and credit-note cancellation. 52-56 [ ] production/stock/reports pages; dashboard/alerts.
 ### Phase 8 - Ship
 57-60 [ ] full benchmark/fixes; deployment; README/design note; demo/interview/final audit.
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
+- Step 51 (2026-11-26): Added invoice list/detail and PDF/share actions, dispatch/payment/cancel modals, payments and receivables pages, and order invoice creation. Frontend suite 146 PASS (baseline 125); build passes. Files: appended registry routes; new invoice/payment pages and tests/helpers; updated OrderInvoiceActions and test. Decisions: authenticated PDF blob download, WhatsApp opens the generated link (no server message), payment capped at due.
 - Step 50 (2026-11-26): Added admin order inbox/detail/approval and shortage pages, route tests, and Step 51 invoice-action stub. Frontend suite 125 PASS (baseline 109), build passes. Files: registry, three pages, stub, and three tests. Decisions: stock uses the availability API; backend's 409 `INSUFFICIENT_STOCK` is handled despite the prompt's 422.
 - Step 49 (2026-11-26): Added salesman order list/detail/customer-sales pages and enabled the My orders confirmation link. Added page tests; frontend suite 109 PASS, build passes. Decisions: manual refresh plus 60-second refresh while visible; no push notifications. Files: registry, three salesman pages/tests, and NewOrderPage link.
 - Step 47 (2026-11-26): Replaced the login stub with validated sign-in, session notice, role-safe redirect and evaluator demo logins. Added login tests and `.env.example`; full frontend suite 70 PASS, build passes. Decisions: demo accounts remain visible unless `VITE_SHOW_DEMO_LOGINS=false`; forgot password is out of scope.
@@ -107,6 +108,7 @@ FRONTEND COMPLETE through step 50
 - Step 48 frontend files: `src/pages/salesman/NewOrderPage.jsx`, `src/pages/salesman/NewOrderPage.test.jsx`, `src/lib/orderQueue.js`, `src/lib/orderQueue.test.js`, `src/hooks/useOrderQueue.js`, `src/hooks/useOrderQueue.test.jsx`, and `src/components/salesman/QueuePanel.jsx`.
 - Step 49 frontend files: `src/pages/salesman/MyOrdersPage.jsx`, `src/pages/salesman/MyOrdersPage.test.jsx`, `src/pages/salesman/MyOrderDetailPage.jsx`, `src/pages/salesman/MyOrderDetailPage.test.jsx`, `src/pages/salesman/MySalesPage.jsx`, and `src/pages/salesman/MySalesPage.test.jsx`.
 - Step 50 frontend files: `src/pages/admin/orders/OrdersInboxPage.jsx`, `OrderDetailPage.jsx`, `ShortagesPage.jsx`, `OrderInvoiceActions.jsx` (Step 51 stub), their three tests, and appended order/shortage routes in `src/app/registry.js`.
+- Step 51 frontend files: `src/pages/admin/invoices/` and `src/pages/admin/payments/` pages/modals/tests; updated `src/pages/admin/orders/OrderInvoiceActions.jsx`; `src/test/adminPageHelpers.jsx`; appended routes in `src/app/registry.js`.
 
 ## Frontend structure
 `src/app/registry.js` owns the page registry; add new page imports and `registerRoute` calls only after its marked append-only comment. Route definitions declare path, component, allowed roles, title, optional navigation metadata and home roles. `App.jsx` builds guarded routes from this registry; `AppShell` renders salesman mobile tabs or the staff sidebar. Tests use the mock Axios adapter and provider wrappers; no data-fetching library is used.
@@ -118,6 +120,7 @@ FRONTEND COMPLETE through step 50
 - `/new-order` is SALESMAN-only; loads assigned customers, backend-priced finished goods and finished availability, and queues failed network submissions (`src/pages/salesman/NewOrderPage.jsx`).
 - `/my-orders` and `/my-orders/:id` are SALESMAN-only order list and detail pages; `/my-sales` shows customer-wise sales (`src/pages/salesman/MyOrdersPage.jsx`, `src/pages/salesman/MyOrderDetailPage.jsx`, `src/pages/salesman/MySalesPage.jsx`).
 - `/orders` is ADMIN/OWNER/ACCOUNTANT inbox; `/orders/:id` is order detail, editable only for ADMIN on SUBMITTED orders; `/shortages` is ADMIN/OWNER-only (`src/pages/admin/orders/OrdersInboxPage.jsx`, `src/pages/admin/orders/OrderDetailPage.jsx`, `src/pages/admin/orders/ShortagesPage.jsx`).
+- `/invoices` and `/invoices/:id` are ADMIN/ACCOUNTANT/OWNER; `/payments`, `/receivables`, and `/receivables/:customerId` are ADMIN/ACCOUNTANT/OWNER (`src/pages/admin/invoices/`, `src/pages/admin/payments/`). Invoice create, dispatch, payment, share, and cancel actions are ADMIN-only; PDF remains available read-only.
 - `/status` is public and checks `GET /api/health` with a retry state (`src/pages/StatusPage.jsx`).
 - `*` renders the public not-found page; authenticated role failures render the forbidden page (`src/pages/NotFoundPage.jsx`, `src/pages/ForbiddenPage.jsx`).
 
@@ -127,6 +130,7 @@ FRONTEND COMPLETE through step 50
 - `/api/orders`: SALESMAN creates SUBMITTED orders at server-resolved prices, reads own orders via `GET /api/orders`, order details via `GET /api/orders/:id`, and customer-wise sales via `GET /api/orders/my/customer-sales`; ADMIN/OWNER read all, shortage and `GET /api/orders/:id/availability` are ADMIN/OWNER, invoice preview ADMIN/ACCOUNTANT/OWNER, mutations ADMIN-only. Approval accepts `{ lines: [{ lineId, approvedQty, approvedPricePaise }] }`, checks unreserved stock, and returns 409 `INSUFFICIENT_STOCK`; shortage allocates SUBMITTED demand FIFO; preview calculates GST without writes.
 - `/api/invoices`: ADMIN creates immutable FY invoices from APPROVED orders; list/detail/dispatch status are ADMIN/ACCOUNTANT/OWNER. PDF download is ADMIN/ACCOUNTANT/OWNER, share link ADMIN; public `/api/public/invoices/:token/pdf` is unauthenticated and signed. `/api/dispatches` create is ADMIN, reads ADMIN/ACCOUNTANT/OWNER; dispatch writes negative ledger movements and orders transition only when fully dispatched.
 - `/api/payments`: ADMIN records linked/unallocated receipts; list/outstanding reads are ADMIN/ACCOUNTANT/OWNER with inclusive IST date filters. `/api/credit-notes` reads are ADMIN/ACCOUNTANT/OWNER; ADMIN invoice cancellation creates a full credit note and reverses dispatched stock.
+- Step 51 contracts: `POST /api/invoices { orderId }`; invoice filters use status/customerId/from/to/q/page/limit; dispatch sends `{ invoiceId, lines: [{ itemId, qty }], vehicleNo?, notes? }`; payment sends `{ customerId, invoiceId, amountPaise, mode, reference?, paymentDate? }`. Overpayment is rejected; share returns generated URLs and expiry.
 - `/api/costing`: average-rate/item and run sheet/product-cost reads require ADMIN/ACCOUNTANT/OWNER; costs use priced receipts, finished opening-only rates, material/overhead detail and inclusive IST ranges.
 - `/api/reports`: catalog and sales register/customer/product/GST reports require ADMIN/ACCOUNTANT/OWNER; stock summary/ledger and purchase register also allow PRODUCTION, and purchase register uses `purchases:read`. Report periods use inclusive IST dates; customer/product shares use filtered totals; GST nets credit notes.
 - `/api/reports`: production report allows PRODUCTION/ADMIN/ACCOUNTANT/OWNER; `/<key>/export?format=csv|xlsx|pdf&section=` exports catalog reports read-only and exposes format/section metadata. Product-costing includes product averages/runs; receivables ageing supports 0-30/31-60/61-90/91+ day buckets and optional invoice details.
@@ -136,6 +140,7 @@ FRONTEND COMPLETE through step 50
 - Stock availability subtracts outstanding approved/invoiced reservations; purchase cost averages use Decimal rates; adjustment quantities are positive magnitudes with IN/OUT direction, and adjustment history uses `createdAt`.
 
 ## Decisions (deviations from AI_CONTEXT.md and why)
+- Step 51 downloads PDFs as authenticated blobs and uses the filename from `Content-Disposition` (invoice number fallback); WhatsApp opens the server-generated URL and does not send a message. Payments cannot exceed the invoice due.
 - Step 50 stock cover comes from `GET /api/orders/:id/availability`, not client-side stock calculations; ADMIN approval above free stock is refused by the backend and the UI offers the free-stock quantity. The real backend returns 409 `INSUFFICIENT_STOCK` (not the prompt's 422), and availability/shortage reads are restricted to ADMIN/OWNER.
 - Step 48 offline submissions use localStorage key `oda.orderQueue` with backend-compatible idempotent `clientRef`; the page still requires connectivity to load customers/catalog, and no service worker/PWA is included. Order pricing uses the real `/catalog/order-items?customerId=` endpoint, which resolves customer prices before defaults. SALESMAN finished availability returns `availablePackets` without `freePackets`; the UI uses that actual field and does not request stock summary. The order total is taxable-only; GST is added at invoice time.
 - Step 49 order history refreshes manually and every 60 seconds only while the tab is visible; browser push notifications are not included. Sales totals are summed with integer paise arithmetic from the customer-wise API rows.
@@ -188,6 +193,7 @@ FRONTEND COMPLETE through step 50
 - Receivables ageing includes customers with an eligible invoice and an outstanding balance or remaining credit; `detail=true` opts into invoice rows, and sections are capped at 50000 rows. Invoice PDFs use current customer phone and item display unit because the schema has no historical fields for them.
 
 ## Known issues / TODO
+- Step 51 was verified by mock-adapter tests and build; seeded-browser invoice/dispatch/payment walkthrough was not run.
 - Forgot password is not available (out of scope). Frontend install reported 8 audit findings (5 moderate, 1 high, 2 critical); review before deployment.
 - The order page requires a connection to load masters; offline support covers saved order submission/sync only, not a PWA/offline shell.
 - Salesman order updates use 60-second polling while the tab is visible; push notifications are not implemented.
