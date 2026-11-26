@@ -134,3 +134,34 @@ registerRoute({
   title: 'My sales',
   nav: { label: 'My sales', group: 'Orders', order: 30, mobile: true }
 });
+
+import OrdersInboxPage from '../pages/admin/orders/OrdersInboxPage.jsx';
+
+registerRoute({
+  path: '/orders',
+  component: OrdersInboxPage,
+  roles: ['ADMIN', 'OWNER', 'ACCOUNTANT'],
+  title: 'Orders',
+  nav: { label: 'Orders', group: 'Sales', order: 10, mobile: false },
+  homeFor: ['ADMIN']
+});
+
+import OrderDetailPage from '../pages/admin/orders/OrderDetailPage.jsx';
+
+registerRoute({
+  path: '/orders/:id',
+  component: OrderDetailPage,
+  roles: ['ADMIN', 'OWNER', 'ACCOUNTANT'],
+  title: 'Order details',
+  nav: null
+});
+
+import ShortagesPage from '../pages/admin/orders/ShortagesPage.jsx';
+
+registerRoute({
+  path: '/shortages',
+  component: ShortagesPage,
+  roles: ['ADMIN', 'OWNER'],
+  title: 'Shortages',
+  nav: { label: 'Shortages', group: 'Sales', order: 20, mobile: false }
+});
