@@ -327,3 +327,14 @@ registerRoute({
   title: 'Report',
   nav: null
 });
+
+import DashboardPage from '../pages/owner/DashboardPage.jsx';
+
+registerRoute({
+  path: '/dashboard',
+  component: DashboardPage,
+  roles: ['OWNER', 'ADMIN'],
+  title: 'Dashboard',
+  nav: { label: 'Dashboard', group: 'Orders', order: 5 },
+  homeFor: ['OWNER']
+});

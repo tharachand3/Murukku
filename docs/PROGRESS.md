@@ -2,14 +2,14 @@
 Last updated: 2026-11-26 by Copilot
 
 ## Next Step
-Step 55 - Dashboard and alerts (phase 7 follow-on)
-BACKEND COMPLETE through step 45
-FRONTEND COMPLETE through step 54
+Step 56 - Alerts (phase 7 follow-on)
+BACKEND COMPLETE through step 45; step 55 dashboard endpoint
+FRONTEND COMPLETE through step 55
 
 ## How to run (keep accurate)
 - Install with `npm --prefix backend install`; start/stop PostgreSQL on 5433 with `npm run db:up` / `npm run db:down`. Create `oda_test` once with `docker compose exec -T db createdb -U oda oda_test`; set `DATABASE_URL` to `postgresql://oda:oda@localhost:5433/oda_test?schema=public`, run `npx prisma migrate deploy` and `npx prisma generate`, then unset it. Tests refuse non-test databases; the invoice snapshot migration is applied.
 - Run backend tests from `backend/` with `npm test`; frontend tests with `npm --prefix frontend test`; build with `npm --prefix frontend run build`. Focused backend suites: exports `npm test -- tests/exports.format.test.js tests/exports.api.test.js`; invoice PDF `npm test -- tests/lib/amountInWords.test.js tests/lib/shareLinks.test.js tests/lib/shareToken.test.js tests/invoiceDocument.test.js tests/invoicePdf.api.test.js`; payments, credit notes, shortage, costing and overhead tests are under `tests/`.
-- Start API/UI with `npm run dev:backend` and `npm run dev:frontend`; sign in as SALESMAN to create orders at `/new-order`, review history at `/my-orders`, and view customer sales at `/my-sales`; ADMIN reviews incoming orders at `/orders` and shortages at `/shortages`; PRODUCTION can plan recipes at `/boms`, start runs at `/production/new`, manage runs at `/production`, view inventory at `/stock`, record purchases at `/purchases/new`, and post adjustments at `/stock/adjustments`. Report-capable roles can open the role-filtered catalog at `/reports` and a shareable report at `/reports/:key`. Run `npm run bench:play` against a fresh seeded DB (default through step 9; `-- --upto=1` through `-- --upto=9`; `API_URL` overrides); step 9 writes all report exports to `backend/exports/benchmark/`. `npm run bench:invoice-pdf` saves an invoice PDF there and prints share links. Do not reset a database unless explicitly required.
+- Start API/UI with `npm run dev:backend` and `npm run dev:frontend`; OWNER opens `/dashboard`; SALESMAN creates orders at `/new-order`, reviews history at `/my-orders`, and views customer sales at `/my-sales`; ADMIN reviews incoming orders at `/orders` and shortages at `/shortages`; PRODUCTION can plan recipes at `/boms`, start runs at `/production/new`, manage runs at `/production`, view inventory at `/stock`, record purchases at `/purchases/new`, and post adjustments at `/stock/adjustments`. Report-capable roles can open `/reports` and `/reports/:key`. Run `npm run bench:play` against a fresh seeded DB (default through step 9; `-- --upto=1` through `-- --upto=9`; `API_URL` overrides); step 9 writes exports to `backend/exports/benchmark/`. `npm run bench:invoice-pdf` saves an invoice PDF there and prints share links. Do not reset a database unless explicitly required.
 - Run staged checker from `backend/`: `npm run bench:check -- --stage=opening`; stages are `opening`, `after-purchase`, `after-issue`, `after-run`, `after-dispatch`, and `final`. Costing checks run after purchase/run; dispatch uses `after-dispatch`; payment/shortage use `final`.
 - Demo password `Demo@123` works for the six seeded users; login with `POST /api/auth/login` and send `Authorization: Bearer <token>`. Master writes and invoice/order actions are ADMIN-only; customer reads are assignment-scoped for salesmen. Role and route details are listed under API endpoints.
 - Sales API: SALESMAN creates orders with `POST /api/orders` (`{ clientRef?, customerId, notes?, lines: [{itemId, qty}] }`); price is server-resolved and supplied `clientRef` is idempotent. Orders are scoped for salesmen; use `GET /api/orders/:id`, `/my/customer-sales`, `/shortages`, `/:id/availability`, or `/:id/invoice-preview` per role. Approval edits require `orders:approve`; shortage uses FIFO and the active BOM.
@@ -36,22 +36,20 @@ FRONTEND COMPLETE through step 54
 37 [x] report framework and sales register; 38 [x] customer/product sales reports; 39 [x] GST summary; 40 [x] stock summary and ledger; 41 [x] purchase register; 42 [x] production report; 43 [x] receivables ageing; 44 [x] CSV/XLSX/PDF exports and product costing; 45 [x] GST invoice PDF and share links.
 ### Phase 7 - Frontend
 46 [x] frontend test setup, pure helpers, auth/session providers, toast, UI kit, route registry, role layouts/guards and Home/Status pages.
-47-49 [x] login and role redirect; salesman mobile order and offline queue; salesman order history, details, and customer-wise sales. 50 [x] admin order inbox, stock-aware detail/approval, and shortages. 51 [x] invoices, PDF/share, dispatch, payments, receivables, and credit-note cancellation. 52 [x] BOM planning, production runs, completion, variance and costing. 53 [x] stock summary/ledger, purchases and adjustments. 54 [x] catalog-driven reports pages and exports. 55-56 [ ] dashboard/alerts.
+47-49 [x] login and role redirect; salesman mobile order and offline queue; salesman order history, details, and customer-wise sales. 50 [x] admin order inbox, stock-aware detail/approval, and shortages. 51 [x] invoices, PDF/share, dispatch, payments, receivables, and credit-note cancellation. 52 [x] BOM planning, production runs, completion, variance and costing. 53 [x] stock summary/ledger, purchases and adjustments. 54 [x] catalog-driven reports pages and exports. 55 [x] owner dashboard summary; 56 [ ] alerts.
 ### Phase 8 - Ship
 57-60 [ ] full benchmark/fixes; deployment; README/design note; demo/interview/final audit.
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
+- Step 55 (2026-11-26): Added the dashboard summary endpoint and OWNER/ADMIN screen. Files: dashboard service/route/test, owner page/test, appended route and this log. Backend 369 PASS (baseline 365); frontend 232 PASS (baseline 225); build passes. Decision: one summary endpoint reuses existing services.
 - Step 54 (2026-11-26): Added role-filtered reports catalog, URL-backed generic report viewer, typed cells/totals, catalog-driven filters, pagination, CSV/XLSX/PDF downloads and print styling. Files: reports pages/tests/print CSS, report formatting/filter helpers and tests, appended routes. Frontend suite 225 PASS (baseline 192); build passes. Decision: new backend reports use the generic catalog viewer and need frontend-specific changes only for filter hints.
 - Step 53 (2026-11-26): Added stock summary/ledger, authenticated report exports, purchase list/receipt form and adjustments. Files: inventory pages/tests, decimal and download helpers/tests, page wrapper, appended routes. Frontend suite 192 PASS (baseline 164); build passes. Decisions: estimates are labelled and final paise amounts come from the server; ledger exports reuse the stock-ledger report endpoint. Purchase API omits a result count, so list total is labeled for the currently returned page.
 - Step 52 (2026-11-26): Added BOM planning, stock-aware run creation, run listing/detail, completion, variance, overheads and role-gated costing. Files: production pages/tests, quantity helper/test, test wrapper, appended registry routes. Frontend suite 164 PASS (baseline 146); build passes. Decisions: preview variance uses integer basis points and server variance is shown after saving. Seeded-browser walkthrough not run.
 - Step 51 (2026-11-26): Added invoice list/detail and PDF/share actions, dispatch/payment/cancel modals, payments and receivables pages, and order invoice creation. Frontend suite 146 PASS (baseline 125); build passes. Files: appended registry routes; new invoice/payment pages and tests/helpers; updated OrderInvoiceActions and test. Decisions: authenticated PDF blob download, WhatsApp opens the generated link (no server message), payment capped at due.
 - Step 50 (2026-11-26): Added admin order inbox/detail/approval and shortage pages, route tests, and Step 51 invoice-action stub. Frontend suite 125 PASS (baseline 109), build passes. Files: registry, three pages, stub, and three tests. Decisions: stock uses the availability API; backend's 409 `INSUFFICIENT_STOCK` is handled despite the prompt's 422.
-- Step 49 (2026-11-26): Added salesman order list/detail/customer-sales pages and enabled the My orders confirmation link. Added page tests; frontend suite 109 PASS, build passes. Decisions: manual refresh plus 60-second refresh while visible; no push notifications. Files: registry, three salesman pages/tests, and NewOrderPage link.
-- Step 47 (2026-11-26): Replaced the login stub with validated sign-in, session notice, role-safe redirect and evaluator demo logins. Added login tests and `.env.example`; full frontend suite 70 PASS, build passes. Decisions: demo accounts remain visible unless `VITE_SHOW_DEMO_LOGINS=false`; forgot password is out of scope.
-- Step 48 (2026-11-26): Added `/new-order`, a localStorage offline queue, queue sync hook and reusable queue panel; full frontend suite 93 PASS, build passes. Files: registry, salesman page/component, queue helper/hook and new tests. Decisions: catalog uses `/catalog/order-items?customerId=` for resolved prices; salesman availability exposes `availablePackets`, not `freePackets`; no PWA shell.
+- Steps 47-49 (2026-11-26): Added validated login, role-safe redirect, evaluator demo accounts, the `/new-order` offline queue, and salesman order history/detail/customer-sales pages. Frontend suites and builds passed; decisions and file details are retained below and in the page map.
 - Step 46 (2026-11-26): Added frontend test infrastructure, paise/IST/error/session helpers, auth/toast contexts, UI kit, route registry, role shell/guards, and Home/Status pages. Added 55 frontend tests; baseline had no test script. Decisions: localStorage session refresh, `useAsync`, append-only registry, public `/status`, and jest-dom v6 for Vitest 2 compatibility; last7 includes today.
-- Step 45 (2026-11-26): Added invoice words, immutable snapshot PDF, integrity checks, authenticated/public sharing, and demo script; full suite 354 PASS, focused suite 39 PASS.
-- Step 44 (2026-11-26): Added CSV/XLSX/PDF exports, catalog metadata, product-costing report, benchmark step 9; full suite 315 PASS, focused export tests 16 PASS.
+- Steps 44-45 (2026-11-26): Added report CSV/XLSX/PDF exports and product costing, then invoice PDF snapshots, integrity checks and signed sharing; benchmark and focused tests passed.
 - Step 43 (2026-11-26): Added receivables ageing with IST-day buckets and detail rows; full suite grew from 287 to 299 PASS.
 - Step 42 (2026-11-26): Added production report of saved run costs, yields, wastage and variances; full suite grew from 278 to 287 PASS.
 - Step 41 (2026-11-26): Added purchase register with supplier/item summaries; full suite grew from 270 to 278 PASS.
@@ -115,6 +113,7 @@ FRONTEND COMPLETE through step 54
 - Step 52 frontend files: `src/pages/production/` pages and tests; `src/lib/productionQuantities.js` and test; `src/test/productionPageHelpers.jsx`; appended routes in `src/app/registry.js`.
 - Step 53 frontend files: `src/pages/inventory/` pages/tests; `src/lib/decimal.js`, `src/lib/download.js` and tests; `src/test/inventoryPageHelpers.jsx`; appended routes in `src/app/registry.js`.
 - Step 54 frontend files: `src/pages/reports/` catalog/viewer pages, tests and print CSS; `src/lib/reportFormat.js`, `src/lib/reportFilterUi.js` and tests; appended routes in `src/app/registry.js`.
+- Step 55 files: `backend/src/services/dashboardService.js`, `backend/src/routes/dashboard.js`, `backend/tests/dashboard.test.js`, `frontend/src/pages/owner/DashboardPage.jsx` and test, plus app mount, appended registry route and progress log.
 
 ## Frontend structure
 `src/app/registry.js` owns the page registry; add new page imports and `registerRoute` calls only after its marked append-only comment. Route definitions declare path, component, allowed roles, title, optional navigation metadata and home roles. `App.jsx` builds guarded routes from this registry; `AppShell` renders salesman mobile tabs or the staff sidebar. Tests use the mock Axios adapter and provider wrappers; no data-fetching library is used.
@@ -130,6 +129,7 @@ FRONTEND COMPLETE through step 54
 - `/boms` is PRODUCTION/ADMIN/ACCOUNTANT/OWNER; `/production` and `/production/runs/:id` are PRODUCTION/ADMIN/ACCOUNTANT/OWNER; `/production/new` is PRODUCTION/ADMIN (`src/pages/production/`). Run mutations and overheads are PRODUCTION/ADMIN; cost sheets are shown only to roles allowed by the costing API.
 - `/stock` and `/stock/:itemId` are ADMIN/PRODUCTION/ACCOUNTANT/OWNER; `/purchases` is ADMIN/PRODUCTION/ACCOUNTANT/OWNER; `/purchases/new` is PRODUCTION/ADMIN; `/stock/adjustments` is available to stock readers, with write controls only for ADMIN/PRODUCTION (`src/pages/inventory/`).
 - `/reports` and `/reports/:key` are ADMIN/ACCOUNTANT/OWNER/PRODUCTION; the catalog and generic viewer use backend-provided report metadata and filters (`src/pages/reports/ReportsCatalogPage.jsx`, `src/pages/reports/ReportPage.jsx`).
+- `/dashboard` is OWNER/ADMIN; OWNER home route with order, stock, variance, costing, shortage and receivables summary (`src/pages/owner/DashboardPage.jsx`).
 - `/status` is public and checks `GET /api/health` with a retry state (`src/pages/StatusPage.jsx`).
 - `*` renders the public not-found page; authenticated role failures render the forbidden page (`src/pages/NotFoundPage.jsx`, `src/pages/ForbiddenPage.jsx`).
 
@@ -143,6 +143,7 @@ FRONTEND COMPLETE through step 54
 - `/api/costing`: average-rate/item and run sheet/product-cost reads require ADMIN/ACCOUNTANT/OWNER; costs use priced receipts, finished opening-only rates, material/overhead detail and inclusive IST ranges.
 - `/api/reports`: `GET /` returns the capability-filtered catalog; `GET /:key` returns `{ report, filters, period, generatedAt, sections }`. Sales/customer/product/GST reports require ADMIN/ACCOUNTANT/OWNER; stock summary/ledger and purchase register also allow PRODUCTION, and purchase register uses `purchases:read`; production report allows PRODUCTION/ADMIN/ACCOUNTANT/OWNER.
 - `/api/reports/:key/export?format=csv|xlsx|pdf&section=` exports reports read-only; section is accepted for CSV. Report periods use inclusive IST dates; product-costing includes product averages/runs; receivables ageing supports 0-30/31-60/61-90/91+ buckets and optional invoice details.
+- `GET /api/dashboard/summary` requires `dashboard:read` (OWNER/ADMIN); combines IST-today totals, pending approvals, stock/low-stock, shortages, variance alerts, latest product costing and receivables.
 - `/api/items`, `/api/customers`, `/api/suppliers`, `/api/settings`, and `/api/users` expose authenticated reads and ADMIN writes; salesman customer reads are assignment-scoped and user responses omit password hashes. `/api/boms` reads allow ADMIN/PRODUCTION/ACCOUNTANT/OWNER; create/update/clone ADMIN/PRODUCTION; plan takes exactly one of batches, target output, or item/quantity/unit.
 - `/api/production`: run create/complete/update/cancel and overhead mutations are PRODUCTION/ADMIN; history/detail/overhead/variance reads also allow ACCOUNTANT/OWNER. Run detail includes overheads, lines, ledger, audit; only ISSUED runs can be cancelled. Test-only endpoints: `GET /api/_whoami`, `/api/_admin-only`, `/api/_approve-only`.
 - Step 52 contracts: BOM list/detail and `GET /api/boms/:id/plan` use one of `batches`, `targetOutput`, or `itemId/qty/unit`; stock comparisons use `GET /api/stock/summary`. Production uses `POST /api/production/runs`, `POST /api/production/runs/:id/complete`, run list/detail/variance, notes/batch update, cancel, and overhead endpoints. Cost sheets use `GET /api/costing/runs/:id/sheet` for ADMIN/ACCOUNTANT/OWNER.
@@ -152,6 +153,7 @@ FRONTEND COMPLETE through step 54
 
 ## Decisions (deviations from AI_CONTEXT.md and why)
 - Step 54's viewer is generic and driven by the role-filtered backend catalog; adding a backend report needs no report-specific frontend page, only a filter hint in `reportFilterUi.js` when required. Report exports reuse the authenticated blob-download helper.
+- Step 55 uses one additive summary endpoint built from existing inventory, shortage, costing, outstanding, ageing and variance services; today includes all orders and only posted invoices.
 - Step 53 estimates use exact decimal/BigInt arithmetic; saved purchase amounts are formatted from returned paise, not the estimate. Ledger display requests use IST day-boundary timestamps because the direct ledger route coerces timestamps; its report export accepts inclusive calendar dates. The purchase list API returns only a page without a total count, so its subtotal is explicitly labeled “Page total”.
 - Step 52 variance previews use integer base quantities and the server's basis-point threshold/rounding; saved runs show the server variance response. PRODUCTION cannot read costing, so the cost sheet is not requested or shown for that role.
 - Step 51 downloads PDFs as authenticated blobs and uses the filename from `Content-Disposition` (invoice number fallback); WhatsApp opens the server-generated URL and does not send a message. Payments cannot exceed the invoice due.
@@ -205,10 +207,11 @@ FRONTEND COMPLETE through step 54
 - BOM PUT preserves notes when omitted; clone copies source notes and line overrides apply only to items present after replacements. Plan requires exactly one mode; issued quantities use the selected BOM item's dimension and convert to base units.
 - The main benchmark intentionally leaves Distributor B's shortage order unapproved; a backorder is a new order after production replenishes stock.
 - Receivables ageing includes customers with an eligible invoice and an outstanding balance or remaining credit; `detail=true` opts into invoice rows, and sections are capped at 50000 rows. Invoice PDFs use current customer phone and item display unit because the schema has no historical fields for them.
+- Step 55 counts all orders created today and only POSTED invoices; variance counts cover the 30 inclusive IST calendar days ending today.
 
 ## Known issues / TODO
-- Step 54 mock-adapter tests/build pass; seeded-browser report benchmark walkthrough was not run.
-- Step 53 mock-adapter tests/build pass; the seeded purchase/ledger/adjustment browser walkthrough was not run.
+- Step 55 has no historical charts; seeded-browser dashboard verification was not run because `seed:reset` is prohibited.
+- Steps 53-54 mock-adapter suites/build pass; seeded-browser inventory and report walkthroughs were not run.
 - Step 52 was verified with mock-adapter tests and build; seeded-browser production walkthrough was not run. The suggested checklist includes `seed:reset`, which was not run under the explicit no-reset instruction.
 - Step 51 was verified by mock-adapter tests and build; seeded-browser invoice/dispatch/payment walkthrough was not run.
 - Forgot password is not available (out of scope). Frontend install reported 8 audit findings (5 moderate, 1 high, 2 critical); review before deployment.
@@ -235,6 +238,7 @@ FRONTEND COMPLETE through step 54
 - GST report v1 has no HSN-level exempt/nil-rated sections, cess, or amendment handling.
 - Customer ageing uses invoice dates because no credit-term field exists; invoice due dates and credit-term overrides are not modeled.
 - Step 45 generates WhatsApp/email links but does not send messages; public links expire after seven days.
+
 
 ## Benchmark status (stage: PASS/FAIL/SKIPPED)
 opening PASS; after-purchase PASS (including flour weighted rate 4.3125); after-issue PASS; after-run PASS (material cost 405500); overhead and cost-sheet final checks PASS (180000 paise, Rs 31.14, margin 3771 bp); costing PASS; variance PASS
