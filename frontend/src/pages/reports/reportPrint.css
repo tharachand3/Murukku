@@ -1,0 +1,29 @@
+@media print {
+  body.report-print-active header,
+  body.report-print-active aside,
+  body.report-print-active nav {
+    display: none !important;
+  }
+
+  body.report-print-active .report-print-hide {
+    display: none !important;
+  }
+
+  body.report-print-active main.report-page {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  body.report-print-active .report-table-scroll {
+    overflow: visible !important;
+  }
+
+  body.report-print-active .report-table-scroll table {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  body.report-print-active .report-table-scroll th {
+    position: static !important;
+  }
+}

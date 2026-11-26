@@ -306,3 +306,24 @@ registerRoute({
   title: 'Stock adjustments',
   nav: { label: 'Adjustments', group: 'Inventory', order: 30, mobile: false }
 });
+
+import ReportsCatalogPage from '../pages/reports/ReportsCatalogPage.jsx';
+
+registerRoute({
+  path: '/reports',
+  component: ReportsCatalogPage,
+  roles: ['ADMIN', 'ACCOUNTANT', 'OWNER', 'PRODUCTION'],
+  title: 'Reports',
+  nav: { label: 'Reports', group: 'Reports', order: 10, mobile: false },
+  homeFor: ['ACCOUNTANT']
+});
+
+import ReportPage from '../pages/reports/ReportPage.jsx';
+
+registerRoute({
+  path: '/reports/:key',
+  component: ReportPage,
+  roles: ['ADMIN', 'ACCOUNTANT', 'OWNER', 'PRODUCTION'],
+  title: 'Report',
+  nav: null
+});
