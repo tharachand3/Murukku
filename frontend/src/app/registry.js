@@ -215,3 +215,44 @@ registerRoute({
   title: 'Customer receivables',
   nav: null
 });
+
+import RunsPage from '../pages/production/RunsPage.jsx';
+
+registerRoute({
+  path: '/production',
+  component: RunsPage,
+  roles: ['PRODUCTION', 'ADMIN', 'ACCOUNTANT', 'OWNER'],
+  title: 'Production runs',
+  nav: { label: 'Production runs', group: 'Production', order: 10, mobile: false },
+  homeFor: ['PRODUCTION']
+});
+
+import BomsPage from '../pages/production/BomsPage.jsx';
+
+registerRoute({
+  path: '/boms',
+  component: BomsPage,
+  roles: ['PRODUCTION', 'ADMIN', 'ACCOUNTANT', 'OWNER'],
+  title: 'Recipes (BOM)',
+  nav: { label: 'Recipes (BOM)', group: 'Production', order: 20, mobile: false }
+});
+
+import NewRunPage from '../pages/production/NewRunPage.jsx';
+
+registerRoute({
+  path: '/production/new',
+  component: NewRunPage,
+  roles: ['PRODUCTION', 'ADMIN'],
+  title: 'New production run',
+  nav: null
+});
+
+import RunDetailPage from '../pages/production/RunDetailPage.jsx';
+
+registerRoute({
+  path: '/production/runs/:id',
+  component: RunDetailPage,
+  roles: ['PRODUCTION', 'ADMIN', 'ACCOUNTANT', 'OWNER'],
+  title: 'Production run details',
+  nav: null
+});
