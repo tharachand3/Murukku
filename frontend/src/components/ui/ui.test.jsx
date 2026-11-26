@@ -9,7 +9,11 @@ import { Money } from './Money.jsx';
 import { Modal } from './Modal.jsx';
 import { Pagination } from './Pagination.jsx';
 import { QtyStepper } from './QtyStepper.jsx';
+import { StatusBadge } from './StatusBadge.jsx';
+import { Table } from './Table.jsx';
+import { Skeleton } from './Skeleton.jsx';
 import { formatPaise } from '../../lib/money.js';
+import { STATUS_LABELS } from '../../lib/statusLabels.js';
 
 function EditableModal() {
   const [value, setValue] = useState('');
@@ -52,6 +56,21 @@ describe('UI primitives', () => {
     render(<Button loading>Save</Button>);
     expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
     expect(screen.getByRole('status', { name: 'Working' })).toBeInTheDocument();
+  });
+
+  it('uses the documented label for each workflow status and retains its raw code', () => {
+    render(<div>{Object.entries(STATUS_LABELS).map(([status, label]) => <StatusBadge key={status} status={status} />)}</div>);
+    for (const [status, label] of Object.entries(STATUS_LABELS)) {
+      expect(screen.getByText(label)).toHaveAttribute('title', status);
+    }
+  });
+
+  it('renders responsive table labels and the table skeleton state', () => {
+    const { rerender } = render(<Table columns={[{ key: 'name', label: 'Item' }]} responsive rows={[{ id: 'flour', name: 'Flour' }]} />);
+    expect(screen.getByRole('table')).toHaveClass('responsive-table');
+    expect(screen.getByRole('cell', { name: 'Flour' })).toHaveAttribute('data-label', 'Item');
+    rerender(<Skeleton variant="table" rows={2} />);
+    expect(screen.getByRole('status', { name: 'Loading table' })).toBeInTheDocument();
   });
 
   it('bounds pagination controls and emits selected pages', async () => {

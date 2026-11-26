@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage.jsx';
 import NotFoundPage from './pages/NotFoundPage.jsx';
 import StatusPage from './pages/StatusPage.jsx';
 import { Spinner } from './components/ui/Spinner.jsx';
+import DesignPage from './pages/dev/DesignPage.jsx';
 
 function HomeRedirect() {
   const { status, user } = useAuth();
@@ -28,6 +29,7 @@ export default function App() {
     <Routes>
       <Route element={<LoginPage />} path="/login" />
       <Route element={<StatusPage />} path="/status" />
+      {import.meta.env.DEV && <Route element={<DesignPage />} path="/design" />}
       <Route element={<HomeRedirect />} path="/" />
       <Route element={<RequireAuth><AppShell /></RequireAuth>}>
         {registry.routes().map((route) => {

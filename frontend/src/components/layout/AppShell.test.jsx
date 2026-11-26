@@ -30,6 +30,20 @@ function renderShell(role) {
     nav: { label: 'Home', group: 'Orders', order: 0, mobile: true },
     homeFor: [...ROLES]
   });
+  for (const [path, label, order] of [
+    ['/new-order', 'New order', 1],
+    ['/my-orders', 'My orders', 2],
+    ['/my-sales', 'My sales', 3]
+  ]) {
+    registry.register({
+      path,
+      component: Home,
+      roles: ['SALESMAN'],
+      title: label,
+      nav: { label, group: 'Orders', order, mobile: true },
+      homeFor: path === '/new-order' ? ['SALESMAN'] : []
+    });
+  }
   return render(
     <MemoryRouter initialEntries={['/home']}>
       <ToastProvider>
@@ -51,7 +65,10 @@ describe('role-based app shell', () => {
   it('shows the fixed salesman tab navigation', async () => {
     renderShell('SALESMAN');
     await waitFor(() => expect(screen.getByText('Test User')).toBeInTheDocument());
-    expect(screen.getByRole('navigation', { name: 'Sales navigation' })).toBeInTheDocument();
+    const bottomNav = screen.getByRole('navigation', { name: 'Sales navigation' });
+    expect(bottomNav).toHaveClass('md:hidden');
+    expect(bottomNav.querySelectorAll('a')).toHaveLength(3);
+    expect(screen.getByRole('navigation', { name: 'Sales navigation tabs' })).toHaveClass('md:flex');
     expect(screen.getByText('Home content')).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Staff navigation' })).not.toBeInTheDocument();
   });

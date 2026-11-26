@@ -1,8 +1,8 @@
 # PROGRESS.md - live project memory (UPDATE AFTER EVERY STEP)
-Last updated: 2026-11-26 by Copilot
+Last updated: 2026-11-27 by Copilot
 
 ## Next Step
-Step 58 - Deployment
+UX U3 verification and remaining page chrome, then Step 58 - Deployment
 BACKEND COMPLETE through step 45; step 55 dashboard endpoint
 FRONTEND COMPLETE through step 56
 
@@ -42,13 +42,16 @@ FRONTEND COMPLETE through step 56
 ### Phase 8 - Ship
 57 [x] full benchmark runner, final-state checker and proof docs. 58-60 [ ] deployment; README/design note; demo/interview/final audit.
 ### UX reliability
-U1 [ ] Input focus/remount regression fix (implemented; full-suite verification pending; no separate UX-pack checklist exists, so tracked here).
+### UX pack
+U1 [x] Input focus/remount fix; U2 [x] predecessor (completion confirmed by user).
+U3 [ ] Visual design system and app shell (shared system and showcase implemented; page-wide chrome and full verification remain).
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
-- U1 (2026-11-26): Modal effect dependencies on inline callbacks caused focus cleanup/refocus on rerender; QtyStepper mirrored parent values over active drafts; useAsync marked every reload as initial loading. Fixes: callback refs/stable modal lifecycle, draft preservation until blur, silent refresh flag, initial-load-only placeholders, persistent table keys, numeric text inputs and focus regression guards. No API/business logic changed.
-- U1 files: Modal.jsx, QtyStepper.jsx, Table.jsx, useAsync.js, eslint.config.js, package.json/lock, remountGuard.js; affected pages: DispatchModal, InvoiceDetailPage, OrderDetailPage, OrdersInboxPage, CustomerReceivablesPage, AlertsPage, AdjustmentsPage, DashboardPage, RunDetailPage, ReportPage, MyOrdersPage.
-- U1 tests updated: ui, useAsync, LoginPage, InvoiceDetailPage, OrderDetailPage, OrdersInboxPage, PaymentModal, AlertsPage, AdjustmentsPage, NewPurchasePage, StockLedgerPage, NewRunPage, RunDetailPage, ReportPage, NewOrderPage tests. ESLint errors on react/no-unstable-nested-components, react/jsx-key, react-hooks/rules-of-hooks; frontend check script runs lint, tests, build sequentially.
-- U1 verification: lint PASS; production build PASS. Full test run was stopped before completion at the user's request; baseline before changes was 247 passing tests. No backend files changed. U1 remains unchecked until full-suite verification.
+- U3 (2026-11-27): Added green/turmeric tokens, Inter/Lucide, polished shared controls, status labels, overlays, responsive app shell and a dev-only `/design` gallery. Decisions: green primary, turmeric accent, slate surfaces; no dark mode.
+- U3 files: frontend Tailwind/CSS/entry, AppShell, App route, shared UI components, `statusLabels.js`, DesignPage, package manifest/lock, UX_GUIDE. Existing tests edited: `ui.test.jsx` covers status labels/table/skeleton; `AppShell.test.jsx` covers three mobile tabs and desktop tabs.
+- U3 verification: production build PASS; lint PASS; focused UI/shell tests PASS (14/14). Full suite was not completed; prior recorded baseline was 247 tests. PageHeader conversion and first-load skeleton replacements remain; no backend files changed.
+- U1 (2026-11-26): Modal callback dependencies caused focus cleanup/refocus; QtyStepper overwrote drafts; useAsync showed initial-loading UI on refresh. Fixed with callback refs, draft preservation, silent refresh, stable table keys, numeric text inputs and regression guards. User confirmed U1 and U2 complete.
+- U1 files: Modal.jsx, QtyStepper.jsx, Table.jsx, useAsync.js, eslint.config.js, package.json/lock, remountGuard.js; affected pages: DispatchModal, InvoiceDetailPage, OrderDetailPage, OrdersInboxPage, CustomerReceivablesPage, AlertsPage, AdjustmentsPage, DashboardPage, RunDetailPage, ReportPage, MyOrdersPage. Test updates: ui, useAsync, LoginPage, InvoiceDetailPage, OrderDetailPage, OrdersInboxPage, PaymentModal, AlertsPage, AdjustmentsPage, NewPurchasePage, StockLedgerPage, NewRunPage, RunDetailPage, ReportPage, NewOrderPage.
 - Step 57 (2026-11-26): Added strict report/export, invoice-PDF and cost-sheet checks; guarded `bench:full`; final-state checks; report/RBAC tests; and benchmark/UI proof docs. Fixed the required-enum `sourceType` null check using SQL `EXISTS`. Backend 381/381 PASS (baseline 368 PASS/1 FAIL); frontend 247/247 PASS; build PASS; full benchmark PASS 36/36; non-reset and production-reset guards verified.
 - Step 56 (2026-11-26): Added reusable alert components, `/alerts` with role-gated variance/stock/shortage sections, ADMIN reorder editing, and focused tests. Files: new `frontend/src/components/alerts/`, `frontend/src/lib/alerts.js` and tests, `frontend/src/pages/alerts/` and tests, appended registry route, and this log. Frontend 247 PASS (baseline 232); build passes; no backend files changed.
 - Step 55 (2026-11-26): Added the dashboard summary endpoint and OWNER/ADMIN screen. Files: dashboard service/route/test, owner page/test, appended route and this log. Backend 369 PASS (baseline 365); frontend 232 PASS (baseline 225); build passes. Decision: one summary endpoint reuses existing services.
@@ -215,6 +218,7 @@ U1 [ ] Input focus/remount regression fix (implemented; full-suite verification 
 - Step 55 counts all orders created today and only POSTED invoices; variance counts cover the 30 inclusive IST calendar days ending today.
 
 ## Known issues / TODO
+- U3 is not complete: standardize all existing page headers with PageHeader and replace remaining first-load blank spinners with shaped skeletons; no dark mode.
 - Alerts have no push or email notifications; updates use visible-tab polling.
 - Step 55 has no historical charts; seeded-browser dashboard verification was not run because `seed:reset` is prohibited.
 - Steps 53-54 mock-adapter suites/build pass; seeded-browser inventory and report walkthroughs were not run.

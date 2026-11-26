@@ -12,7 +12,7 @@ export function Textarea({ id: suppliedId, label, hint, error, required, classNa
         {...props}
         aria-describedby={describedBy}
         aria-invalid={Boolean(error)}
-        className={`min-h-24 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 ${className}`}
+        className={`min-h-24 w-full rounded-control border bg-white px-3 py-2 text-sm text-slate-900 focus:border-brand-600 focus:ring-2 focus:ring-brand-100 ${error ? 'border-red-600' : 'border-slate-300'} ${className}`}
         id={id}
         required={required}
       />

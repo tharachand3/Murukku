@@ -6,6 +6,7 @@ import { registry } from './app/registry.js';
 import { RegistryProvider } from './app/RegistryContext.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { ToastProvider } from './context/ToastContext.jsx';
+import '@fontsource-variable/inter';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(

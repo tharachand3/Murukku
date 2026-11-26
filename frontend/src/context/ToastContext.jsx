@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { CheckCircle2, CircleAlert, Info } from 'lucide-react';
 
 const ToastContext = createContext(null);
 
@@ -38,10 +39,10 @@ export function ToastProvider({ children }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="fixed right-4 top-4 z-[100] flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2">
+      <div aria-live="polite" className="fixed right-4 top-4 z-[100] flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2">
         {toasts.map((toast) => (
           <div
-            className={`rounded-lg border bg-white px-4 py-3 shadow-lg ${
+            className={`flex items-center gap-3 rounded-card border bg-white px-4 py-3 shadow-lg animate-slide-up ${
               toast.tone === 'error'
                 ? 'border-red-300 text-red-800'
                 : toast.tone === 'success'
@@ -51,7 +52,8 @@ export function ToastProvider({ children }) {
             key={toast.id}
             role="status"
           >
-            {toast.message}
+            {toast.tone === 'error' ? <CircleAlert aria-hidden="true" size={18} /> : toast.tone === 'success' ? <CheckCircle2 aria-hidden="true" size={18} /> : <Info aria-hidden="true" size={18} />}
+            <span>{toast.message}</span>
           </div>
         ))}
       </div>

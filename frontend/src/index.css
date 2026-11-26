@@ -1,3 +1,43 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  font-family: Inter, system-ui, sans-serif;
+  color: #0f172a;
+  background: #f8fafc;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --brand-50: #f0f9f1;
+  --brand-100: #dcf1df;
+  --brand-600: #2b783d;
+  --brand-700: #246033;
+  --turmeric-500: #f99307;
+}
+
+html { min-width: 320px; scroll-behavior: smooth; }
+body { margin: 0; min-height: 100vh; background: #f8fafc; font-size: 14px; line-height: 20px; }
+body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+main h1 { font-size: 24px; line-height: 32px; font-weight: 600; }
+main h1.text-2xl { font-size: 24px; line-height: 32px; font-weight: 600; letter-spacing: -0.02em; }
+main h2 { font-size: 18px; line-height: 28px; font-weight: 600; }
+:focus-visible { outline: 2px solid #2b783d; outline-offset: 2px; }
+button, a, input, select, textarea { transition: color 150ms ease-out, background-color 150ms ease-out, border-color 150ms ease-out, box-shadow 150ms ease-out; }
+button:active { transform: scale(.98); }
+.page-content { animation: fade-in 150ms ease-out; }
+.skeleton-shimmer { background: linear-gradient(90deg, #e2e8f0 25%, #f8fafc 50%, #e2e8f0 75%); background-size: 200% 100%; animation: shimmer 1.5s ease-in-out infinite; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+@media (max-width: 639px) {
+  .responsive-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+  .responsive-table tbody, .responsive-table tr, .responsive-table td { display: block; width: 100%; }
+  .responsive-table tr { padding: .5rem 1rem; border-bottom: 1px solid #e2e8f0; }
+  .responsive-table td { display: flex; justify-content: space-between; gap: 1rem; padding: .35rem 0; white-space: normal; text-align: right; }
+  .responsive-table td::before { content: attr(data-label); color: #475569; font-weight: 600; text-align: left; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+@media print {
+  [data-app-topbar], [data-app-sidebar], [data-app-navigation], .no-print { display: none !important; }
+  body, main { background: #fff !important; color: #000 !important; }
+}
