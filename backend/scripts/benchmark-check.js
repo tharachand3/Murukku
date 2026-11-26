@@ -504,6 +504,101 @@ checks.push(...['opening', 'after-purchase', 'after-issue', 'after-run'].map((st
   }
 })));
 
+checks.push(
+  ...Object.entries({
+    FLOUR: '120 kg',
+    OIL: '19.5 l',
+    SPICE: '3.8 kg',
+    POUCH200: '306 pcs',
+    CARTON: '21 pcs',
+    MURUKKU200: '88 packet'
+  }).map(([itemCode, expected]) => ({
+    name: `final ${itemCode} balance`,
+    kind: 'stock',
+    stage: 'final',
+    expected,
+    actualFn: async (db) => {
+      const item = await db.item.findUnique({
+        where: { code: itemCode },
+        select: { id: true }
+      });
+      if (!item) return null;
+      const [balance] = await getBalances(db, { itemIds: [item.id] });
+      return balance?.balanceDisplay ?? null;
+    }
+  })),
+  ...['CARTON', 'POUCH200'].map((itemCode) => ({
+    name: itemCode === 'CARTON'
+      ? 'carton variance -10.00% flagged'
+      : 'pouch variance -3.00% not flagged',
+    kind: 'document',
+    stage: 'final',
+    expected: JSON.stringify({
+      bp: itemCode === 'CARTON' ? -1000 : -300,
+      pct: itemCode === 'CARTON' ? '-10.00' : '-3.00',
+      flagged: itemCode === 'CARTON'
+    }),
+    actualFn: async (db) => {
+      const run = await db.productionRun.findFirst({
+        where: { status: 'COMPLETED', actualGoodQty: 188 },
+        orderBy: [{ completedAt: 'desc' }, { id: 'desc' }],
+        include: {
+          lines: {
+            include: { item: { select: { code: true } } }
+          }
+        }
+      });
+      if (!run) return null;
+      const variance = computeRunVariance(run, run.lines);
+      const line = variance.lines.find((entry) =>
+        run.lines.find((runLine) => runLine.itemId === entry.itemId)?.item.code === itemCode
+      );
+      return line
+        ? JSON.stringify({ bp: line.bp, pct: line.pct, flagged: line.flagged })
+        : null;
+    }
+  })),
+  {
+    name: 'every stock movement has a sourceType',
+    kind: 'document',
+    stage: 'final',
+    expected: true,
+    actualFn: async (db) => {
+      const result = await db.$queryRaw`
+        SELECT EXISTS (
+          SELECT 1
+          FROM "StockMovement"
+          WHERE "sourceType" IS NULL
+        ) AS "hasNullSourceType"
+      `;
+      return result[0]?.hasNullSourceType === false;
+    }
+  },
+  {
+    name: 'final ledger reconciles: SUM(qtyChange) per item equals the displayed balance',
+    kind: 'document',
+    stage: 'final',
+    expected: true,
+    actualFn: async (db) => {
+      const [balances, totals] = await Promise.all([
+        getBalances(db),
+        db.stockMovement.groupBy({
+          by: ['itemId'],
+          _sum: { qtyChange: true }
+        })
+      ]);
+      const totalByItemId = new Map(
+        totals.map(({ itemId, _sum }) => [itemId, _sum.qtyChange ?? 0])
+      );
+      return balances.every(({ itemId, balanceBase, balanceDisplay, displayUnit }) => {
+        const ledgerTotal = totalByItemId.get(itemId) ?? 0;
+        return ledgerTotal === balanceBase &&
+          formatQty(ledgerTotal, displayUnit) === balanceDisplay;
+      });
+    }
+  }
+);
+
 function readStage(args) {
   const stageArgument = args.find((argument) => argument.startsWith('--stage='));
   const stage = stageArgument?.slice('--stage='.length);
@@ -586,6 +681,10 @@ async function main() {
     console.table(results);
     console.log(`PASS: ${passed} | FAIL: ${failures} | INFO: ${info} | SKIPPED: ${skipped}`);
     if (failures > 0) {
+      console.error(`BENCHMARK_CHECK_FAILURES: ${results
+        .filter(({ Status }) => Status === 'FAIL')
+        .map(({ Check }) => Check)
+        .join(', ')}`);
       process.exitCode = 1;
     }
   } finally {
