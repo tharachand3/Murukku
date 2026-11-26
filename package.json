@@ -4,6 +4,7 @@
   "scripts": {
     "dev:backend": "npm --prefix backend run dev",
     "dev:frontend": "npm --prefix frontend run dev",
+    "test:frontend": "npm --prefix frontend test",
     "db:up": "docker compose up -d db",
     "db:down": "docker compose down",
     "test": "npm --prefix backend test"

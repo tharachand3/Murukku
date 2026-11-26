@@ -1,25 +1,47 @@
-import { useEffect, useState } from 'react';
-import { api } from './lib/api.js';
+import { Navigate, Route, Routes } from 'react-router-dom';
+import { useAuth } from './context/AuthContext.jsx';
+import { useRegistry } from './app/RegistryContext.jsx';
+import { RequireAuth, RequireRole } from './components/guards.jsx';
+import AppShell from './components/layout/AppShell.jsx';
+import LoginPage from './pages/LoginPage.jsx';
+import NotFoundPage from './pages/NotFoundPage.jsx';
+import StatusPage from './pages/StatusPage.jsx';
+import { Spinner } from './components/ui/Spinner.jsx';
 
-function App() {
-  const [connected, setConnected] = useState(false);
-
-  useEffect(() => {
-    api.get('/health')
-      .then(() => setConnected(true))
-      .catch(() => setConnected(false));
-  }, []);
-
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
-      <section className="w-full max-w-md rounded-xl bg-white p-8 text-center shadow-lg">
-        <h1 className="text-2xl font-bold text-slate-900">Order-to-Audit System</h1>
-        <p className={`mt-4 font-medium ${connected ? 'text-green-600' : 'text-red-600'}`}>
-          API: {connected ? 'connected' : 'down'}
-        </p>
-      </section>
-    </main>
-  );
+function HomeRedirect() {
+  const { status, user } = useAuth();
+  const registry = useRegistry();
+  if (status === 'loading') {
+    return <Spinner label="Loading your home page" />;
+  }
+  if (status !== 'authenticated') {
+    return <Navigate replace to="/login" />;
+  }
+  return <Navigate replace to={registry.homePathFor(user.role)} />;
 }
 
-export default App;
+// Public routes and registry-driven role-protected application routes.
+export default function App() {
+  const registry = useRegistry();
+
+  return (
+    <Routes>
+      <Route element={<LoginPage />} path="/login" />
+      <Route element={<StatusPage />} path="/status" />
+      <Route element={<HomeRedirect />} path="/" />
+      <Route element={<RequireAuth><AppShell /></RequireAuth>}>
+        {registry.routes().map((route) => {
+          const Page = route.component;
+          return (
+            <Route
+              element={<RequireRole roles={route.roles}><Page /></RequireRole>}
+              key={route.path}
+              path={route.path.slice(1)}
+            />
+          );
+        })}
+      </Route>
+      <Route element={<NotFoundPage />} path="*" />
+    </Routes>
+  );
+}
