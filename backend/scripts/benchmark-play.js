@@ -60,6 +60,182 @@ function assertEqual(actual, expected, label) {
   }
 }
 
+function reportSection(result, reportKey, sectionKey) {
+  const section = result.sections?.find((entry) => entry.key === sectionKey);
+  if (!section) {
+    throw new Error(`${reportKey} is missing the ${sectionKey} section`);
+  }
+  return section;
+}
+
+function assertReportBenchmark(reportKey, result) {
+  switch (reportKey) {
+    case 'sales-register': {
+      const invoices = reportSection(result, reportKey, 'invoices').rows;
+      const summary = reportSection(result, reportKey, 'summary').rows;
+      assertEqual(invoices.length, 1, 'Sales register invoice count');
+      if (!/^INV\/\d{4}-\d{2}\/0001$/.test(invoices[0].invoiceNo)) {
+        throw new Error(`Unexpected benchmark invoice number ${invoices[0].invoiceNo}`);
+      }
+      assertEqual(invoices[0].totalPaise, 787500, 'Sales register invoice total');
+      assertEqual(
+        summary.find(({ label }) => label === 'Net sales (posted invoices)')?.totalPaise,
+        787500,
+        'Sales register net sales'
+      );
+      return `${invoices[0].invoiceNo} total 787500 paise`;
+    }
+    case 'gst-summary': {
+      const totals = reportSection(result, reportKey, 'gstr3b-outward').totals;
+      assertEqual(totals.taxableValuePaise, 750000, 'GST net taxable value');
+      assertEqual(totals.cgstPaise, 18750, 'GST CGST');
+      assertEqual(totals.sgstPaise, 18750, 'GST SGST');
+      assertEqual(totals.igstPaise, 0, 'GST IGST');
+      return 'net taxable 750000; CGST 18750; SGST 18750; IGST 0 paise';
+    }
+    case 'receivables-ageing': {
+      const row = reportSection(result, reportKey, 'customers').rows
+        .find((entry) => entry.customerName === 'Retailer A');
+      assertEqual(row?.outstandingPaise, 387500, 'Retailer A outstanding');
+      assertEqual(row?.bucket0To30Paise, 387500, 'Retailer A 0-30 bucket');
+      return 'Retailer A outstanding 387500 paise in 0-30 days';
+    }
+    case 'stock-summary': {
+      const rows = reportSection(result, reportKey, 'items').rows;
+      const flour = rows.find(({ itemCode }) => itemCode === 'FLOUR');
+      const finished = rows.find(({ itemCode }) => itemCode === 'MURUKKU200');
+      assertEqual(flour?.closingQty, '120', 'Stock report flour closing quantity');
+      assertEqual(finished?.closingQty, '88', 'Stock report finished closing quantity');
+      return 'FLOUR 120 kg; MURUKKU200 88 packets';
+    }
+    case 'purchase-register': {
+      const lines = reportSection(result, reportKey, 'lines').rows;
+      assertEqual(lines.length, 1, 'Purchase register line count');
+      assertEqual(lines[0].amountPaise, 270000, 'Purchase register amount');
+      return 'one purchase line; 270000 paise';
+    }
+    case 'production-report': {
+      const runs = reportSection(result, reportKey, 'runs').rows;
+      assertEqual(runs.length, 1, 'Production report completed run count');
+      assertEqual(runs[0].status, 'COMPLETED', 'Production report run status');
+      assertEqual(runs[0].yieldVarianceBp, -600, 'Production report yield variance');
+      assertEqual(runs[0].yieldFlagged, 'YES', 'Production report yield flag');
+      return 'one completed run; yield -600 bp flagged';
+    }
+    case 'sales-by-customer': {
+      const retailer = reportSection(result, reportKey, 'customers').rows
+        .find((entry) => entry.customerName === 'Retailer A');
+      assertEqual(retailer?.qty, 150, 'Retailer A packets');
+      assertEqual(retailer?.taxableValuePaise, 750000, 'Retailer A taxable sales');
+      return 'Retailer A 150 packets; taxable sales 750000 paise';
+    }
+    case 'sales-by-product': {
+      const product = reportSection(result, reportKey, 'products').rows
+        .find((entry) => entry.itemCode === 'MURUKKU200');
+      assertEqual(product?.qty, 150, 'Murukku packets sold');
+      assertEqual(product?.taxableValuePaise, 750000, 'Product taxable sales');
+      assertEqual(product?.totalPaise, 787500, 'Product sales including tax');
+      return 'MURUKKU200 150 packets; total 787500 paise';
+    }
+    case 'stock-ledger': {
+      const movements = reportSection(result, reportKey, 'movements').rows;
+      const balances = reportSection(result, reportKey, 'balances').rows;
+      const finished = balances.find((entry) => entry.itemCode === 'MURUKKU200');
+      assertEqual(movements.length, 15, 'Stock ledger movement count');
+      assertEqual(balances.length, 6, 'Stock ledger item count');
+      assertEqual(finished?.closingQty, '88', 'Stock ledger finished balance');
+      return '15 movements; 6 item balances; MURUKKU200 88 packets';
+    }
+    case 'product-costing': {
+      const product = reportSection(result, reportKey, 'products').rows
+        .find((entry) => entry.productCode === 'MURUKKU200');
+      assertEqual(product?.runs, 1, 'Product costing completed runs');
+      assertEqual(product?.materialCostPaise, 405500, 'Product material cost');
+      assertEqual(product?.overheadCostPaise, 180000, 'Product overhead cost');
+      assertEqual(product?.avgCostPerPacketPaise, '3114.3617', 'Product packet cost');
+      assertEqual(product?.marginPctBp, 3771, 'Product margin basis points');
+      return 'MURUKKU200 1 run; 3114.3617 paise/packet; margin 3771 bp';
+    }
+    default: {
+      const firstSection = result.sections?.[0];
+      if (!firstSection) {
+        throw new Error(`${reportKey} did not return a section`);
+      }
+      return `${firstSection.rows.length} rows`;
+    }
+  }
+}
+
+async function validateReportExports(report, result, token) {
+  const errors = [];
+  const resultSections = result?.sections ?? [];
+  const sections = resultSections.length > 0
+    ? resultSections
+    : report.sections ?? [];
+  const formats = report.exportFormats;
+  if (!Array.isArray(formats) || formats.length === 0) {
+    errors.push('catalog has no export formats');
+    return errors;
+  }
+
+  const contentTypes = {
+    csv: 'text/csv',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    pdf: 'application/pdf'
+  };
+  for (const format of formats) {
+    const csvSections = format === 'csv' && sections.length > 1
+      ? sections
+      : [{ key: undefined }];
+    for (const { key } of csvSections) {
+      const query = new URLSearchParams({ format });
+      if (key) query.set('section', key);
+      const label = `${format}${key ? ` (${key})` : ''}`;
+      try {
+        const response = await fetch(
+          `${API_URL}/api/reports/${report.key}/export?${query}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        }
+        const expectedContentType = contentTypes[format];
+        if (!expectedContentType) {
+          throw new Error(`unsupported catalog export format ${format}`);
+        }
+        const contentType = response.headers.get('content-type') ?? '';
+        if (!contentType.startsWith(expectedContentType)) {
+          throw new Error(`unexpected Content-Type ${contentType}`);
+        }
+        const body = Buffer.from(await response.arrayBuffer());
+        if (body.length === 0) {
+          throw new Error('empty response body');
+        }
+        if (format === 'xlsx' && body.subarray(0, 2).toString('ascii') !== 'PK') {
+          throw new Error('XLSX body does not start with PK');
+        }
+        if (format === 'pdf' && body.subarray(0, 4).toString('ascii') !== '%PDF') {
+          throw new Error('PDF body does not start with %PDF');
+        }
+        if (format === 'csv') {
+          const csv = body.toString('utf8').replace(/^\uFEFF/, '');
+          const header = csv.split(/\r?\n/, 1)[0];
+          const section = key
+            ? resultSections.find((entry) => entry.key === key)
+            : resultSections[0];
+          const expectedHeader = section?.columns?.[0]?.label;
+          if (!header || !expectedHeader || !header.includes(expectedHeader)) {
+            throw new Error('CSV header row is missing or does not match the section');
+          }
+        }
+      } catch (error) {
+        errors.push(`${label}: ${error.message}`);
+      }
+    }
+  }
+  return errors;
+}
+
 const steps = [
   async ({ token, items, supplier }) => {
     const purchase = await api('/api/purchases', {
@@ -316,6 +492,71 @@ steps.push(async ({ token: production, accountant, admin }) => {
     }
   }
   console.log('Step 9 PASS: all registered reports exported as CSV, XLSX, and PDF.');
+
+  const failures = [];
+  const reportResults = new Map();
+  for (const report of accountantCatalog) {
+    const errors = [];
+    let result;
+    let summary = 'report output unavailable';
+    try {
+      result = await api(`/api/reports/${report.key}`, { token: accountant });
+      if (!Array.isArray(result.sections) || result.sections.length === 0) {
+        throw new Error('report returned no sections');
+      }
+      reportResults.set(report.key, result);
+      summary = assertReportBenchmark(report.key, result);
+    } catch (error) {
+      errors.push(error.message);
+    }
+    errors.push(...await validateReportExports(report, result, accountant));
+    if (errors.length > 0) {
+      failures.push(report.key);
+      console.error(`Report ${report.key} FAIL: ${[...new Set(errors)].join('; ')}`);
+    } else {
+      console.log(`Report ${report.key} PASS: ${summary}`);
+    }
+  }
+
+  try {
+    const [invoiceList, runList] = await Promise.all([
+      api('/api/invoices?status=POSTED&page=1&limit=100', { token: accountant }),
+      api('/api/production/runs?page=1&limit=100', { token: production })
+    ]);
+    const invoiceNo = reportResults.get('sales-register')
+      ?.sections.find(({ key }) => key === 'invoices')?.rows[0]?.invoiceNo;
+    const invoice = invoiceList.items?.find((entry) => entry.invoiceNo === invoiceNo);
+    const run = runList.items?.find((entry) =>
+      entry.status === 'COMPLETED' && entry.actualGoodQtyBase === 188
+    );
+    if (!invoice || !run) {
+      throw new Error('Could not find the benchmark invoice and completed run');
+    }
+
+    const pdfResponse = await fetch(
+      `${API_URL}/api/invoices/${invoice.id}/pdf`,
+      { headers: { Authorization: `Bearer ${accountant}` } }
+    );
+    const pdf = Buffer.from(await pdfResponse.arrayBuffer());
+    if (!pdfResponse.ok ||
+        !(pdfResponse.headers.get('content-type') ?? '').startsWith('application/pdf') ||
+        pdf.subarray(0, 4).toString('ascii') !== '%PDF') {
+      throw new Error(`Invoice PDF failed validation (HTTP ${pdfResponse.status})`);
+    }
+    console.log(`Invoice PDF PASS: ${invoice.invoiceNo}`);
+
+    const costSheet = await api(`/api/costing/runs/${run.id}/sheet`, { token: accountant });
+    assertEqual(costSheet.perPacket?.totalPaise, '3114.3617', 'Cost per packet in paise');
+    assertEqual(costSheet.perPacket?.display, 'Rs 31.14', 'Cost per packet display');
+    assertEqual(costSheet.margin?.bp, 3771, 'Cost sheet margin basis points');
+    console.log('Costing sheet PASS: 3114.3617 paise per packet; margin 3771 bp');
+  } catch (error) {
+    failures.push('invoice-pdf-or-costing-sheet');
+    console.error(`Invoice PDF / costing sheet FAIL: ${error.message}`);
+  }
+  if (failures.length > 0) {
+    throw new Error(`Step 9 validation failed: ${[...new Set(failures)].join(', ')}`);
+  }
 });
 
 function readUpto(args) {

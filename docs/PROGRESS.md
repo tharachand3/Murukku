@@ -43,7 +43,7 @@ FRONTEND COMPLETE through step 56
 57 [x] full benchmark runner, final-state checker and proof docs. 58-60 [ ] deployment; README/design note; demo/interview/final audit.
 
 ## Log (newest first, max 5 lines per step, condense old entries when file > 250 lines)
-- Step 57 (2026-11-26): Extended report/export, invoice-PDF and costing checks; added guarded `bench:full`, final ledger/variance checks, report tests and proof docs. Full suite and live-run results are recorded below.
+- Step 57 (2026-11-26): Added strict report/export, invoice-PDF and cost-sheet checks; guarded `bench:full`; final-state checks; report/RBAC tests; and benchmark/UI proof docs. Fixed the required-enum `sourceType` null check using SQL `EXISTS`. Backend 381/381 PASS (baseline 368 PASS/1 FAIL); frontend 247/247 PASS; build PASS; full benchmark PASS 36/36; non-reset and production-reset guards verified.
 - Step 56 (2026-11-26): Added reusable alert components, `/alerts` with role-gated variance/stock/shortage sections, ADMIN reorder editing, and focused tests. Files: new `frontend/src/components/alerts/`, `frontend/src/lib/alerts.js` and tests, `frontend/src/pages/alerts/` and tests, appended registry route, and this log. Frontend 247 PASS (baseline 232); build passes; no backend files changed.
 - Step 55 (2026-11-26): Added the dashboard summary endpoint and OWNER/ADMIN screen. Files: dashboard service/route/test, owner page/test, appended route and this log. Backend 369 PASS (baseline 365); frontend 232 PASS (baseline 225); build passes. Decision: one summary endpoint reuses existing services.
 - Step 54 (2026-11-26): Added role-filtered reports catalog, URL-backed generic report viewer, typed cells/totals, catalog-driven filters, pagination, CSV/XLSX/PDF downloads and print styling. Files: reports pages/tests/print CSS, report formatting/filter helpers and tests, appended routes. Frontend suite 225 PASS (baseline 192); build passes. Decision: new backend reports use the generic catalog viewer and need frontend-specific changes only for filter hints.
@@ -148,7 +148,7 @@ FRONTEND COMPLETE through step 56
 - Stock availability subtracts outstanding approved/invoiced reservations; purchase cost averages use Decimal rates; adjustment quantities are positive magnitudes with IN/OUT direction, and adjustment history uses `createdAt`.
 
 ## Decisions (deviations from AI_CONTEXT.md and why)
-- Step 57: the real playback already had nine steps and defaulted to its highest implemented step. Strict accountant-catalog report/export validation, invoice-PDF and cost-sheet checks were appended to existing step 9 rather than adding a duplicate step. Existing assertions remain in `benchmark.part1.test.js`, `benchmark.part2.test.js`, and `costing.sheet.test.js`; new final tests target report outputs and report RBAC.
+- Step 57: the real playback already had nine steps and defaulted to its highest implemented step. Strict accountant-catalog report/export validation, invoice-PDF and cost-sheet checks were appended to existing step 9 rather than adding a duplicate step. Existing benchmark tests cover balances, variance, invoice, shortage, IGST, payment and cost; new final tests cover report outputs/RBAC and the final checker.
 - Step 57 adds final balances, carton/pouch flag-boundary, non-null movement source types and final ledger reconciliation checks. Pouches at -3.00% remain unflagged because the threshold comparison is strict. Prisma requires `sourceType` as an enum, so the null check uses SQL `EXISTS` rather than an invalid Prisma null filter.
 - Step 56 uses the run-detail variance endpoint for alert strings because the variance-list response contains run summaries and `alertCount`, not text. Low-stock levels come from `/items`; exact display-to-base conversion uses the existing BigInt decimal helper. Shortages count as one attention item in the total, while the packet count remains separately displayed.
 - Step 54's viewer is generic and driven by the role-filtered backend catalog; adding a backend report needs no report-specific frontend page, only a filter hint in `reportFilterUi.js` when required. Report exports reuse the authenticated blob-download helper.
@@ -241,8 +241,8 @@ FRONTEND COMPLETE through step 56
 - Step 57 browser checklist was documented but not manually executed; actual values below come only from the live runner.
 
 
-## Benchmark status (stage: PASS/FAIL/SKIPPED)
-Live `bench:full -- --reset`: in progress; the final checker and report/export/PDF actuals will be recorded in `docs/BENCHMARK.md`.
+## Benchmark status
+`bench:full -- --reset`: PASS; final checker 36/36 (0 FAIL, 2 INFO, 20 stage-specific SKIPPED). Non-reset stale-database refusal and production reset guard verified. Actuals are in `docs/BENCHMARK.md`.
 
 ## Benchmark checkpoint
 Run `npm run bench:full` in `backend/`; `-- --reset` reseeds first. The runner is refused in production and prints a final PASS/FAIL summary.

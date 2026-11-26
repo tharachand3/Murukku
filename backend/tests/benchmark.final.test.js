@@ -115,6 +115,40 @@ describe('final benchmark report outputs and access', () => {
     });
   });
 
+  it('product sales reports 150 Murukku packets and 787500 paise including tax', async () => {
+    const products = section(await report('sales-by-product'), 'products').rows;
+    const murukku = products.find(({ itemCode }) => itemCode === 'MURUKKU200');
+
+    expect(murukku).toMatchObject({
+      qty: 150,
+      taxableValuePaise: 750000,
+      totalPaise: 787500
+    });
+  });
+
+  it('stock ledger reports 15 movements and 88 finished packets', async () => {
+    const result = await report('stock-ledger');
+    const movements = section(result, 'movements').rows;
+    const balances = section(result, 'balances').rows;
+
+    expect(movements).toHaveLength(15);
+    expect(balances).toHaveLength(6);
+    expect(balances.find(({ itemCode }) => itemCode === 'MURUKKU200')?.closingQty).toBe('88');
+  });
+
+  it('product costing reports 3114.3617 paise per packet and 3771 bp margin', async () => {
+    const products = section(await report('product-costing'), 'products').rows;
+    const murukku = products.find(({ productCode }) => productCode === 'MURUKKU200');
+
+    expect(murukku).toMatchObject({
+      runs: 1,
+      materialCostPaise: 405500,
+      overheadCostPaise: 180000,
+      avgCostPerPacketPaise: '3114.3617',
+      marginPctBp: 3771
+    });
+  });
+
   it('all report data and export endpoints require an authorized role', async () => {
     const catalog = await apiGet(app, benchmark.tokens.accountant, '/api/reports');
     expect(catalog.status).toBe(200);
