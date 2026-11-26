@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { QueuePanel } from '../../components/salesman/QueuePanel.jsx';
 import { Button } from '../../components/ui/Button.jsx';
 import { EmptyState } from '../../components/ui/EmptyState.jsx';
@@ -199,9 +200,12 @@ export default function NewOrderPage() {
           <p className="mt-1 text-sm text-slate-600">GST is added when the invoice is raised</p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Button onClick={startNewOrder}>New order</Button>
-            <Button disabled variant="secondary">
-              My orders (available next step)
-            </Button>
+            <Link
+              className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 py-2 font-medium text-slate-800"
+              to="/my-orders"
+            >
+              My orders
+            </Link>
           </div>
         </section>
       </div>

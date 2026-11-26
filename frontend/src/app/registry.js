@@ -104,3 +104,33 @@ registerRoute({
   nav: { label: 'New order', group: 'Orders', order: 10, mobile: true },
   homeFor: ['SALESMAN']
 });
+
+import MyOrdersPage from '../pages/salesman/MyOrdersPage.jsx';
+
+registerRoute({
+  path: '/my-orders',
+  component: MyOrdersPage,
+  roles: ['SALESMAN'],
+  title: 'My orders',
+  nav: { label: 'My orders', group: 'Orders', order: 20, mobile: true }
+});
+
+import MyOrderDetailPage from '../pages/salesman/MyOrderDetailPage.jsx';
+
+registerRoute({
+  path: '/my-orders/:id',
+  component: MyOrderDetailPage,
+  roles: ['SALESMAN'],
+  title: 'Order details',
+  nav: null
+});
+
+import MySalesPage from '../pages/salesman/MySalesPage.jsx';
+
+registerRoute({
+  path: '/my-sales',
+  component: MySalesPage,
+  roles: ['SALESMAN'],
+  title: 'My sales',
+  nav: { label: 'My sales', group: 'Orders', order: 30, mobile: true }
+});
