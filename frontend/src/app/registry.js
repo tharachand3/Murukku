@@ -338,3 +338,13 @@ registerRoute({
   nav: { label: 'Dashboard', group: 'Orders', order: 5 },
   homeFor: ['OWNER']
 });
+
+import AlertsPage from '../pages/alerts/AlertsPage.jsx';
+
+registerRoute({
+  path: '/alerts',
+  component: AlertsPage,
+  roles: ['PRODUCTION', 'ADMIN', 'ACCOUNTANT', 'OWNER'],
+  title: 'Alerts',
+  nav: { label: 'Alerts', group: 'Production', order: 5, mobile: false }
+});
