@@ -392,6 +392,10 @@ Audit logs capture who changed an entity and the recorded before-and-after value
 - Cancelling an invoice creates a credit note; invoices are never deleted.
 - The invoice snapshot stores seller, buyer, and originating order details as JSON. Database triggers prevent invoice and invoice-line deletion, prevent invoice-line updates, and restrict invoice updates to cancellation fields until cancelled.
 
+### Invoice PDF
+
+The GST invoice document and PDF use the stored seller/buyer JSON snapshot, invoice header, and invoice-line snapshots for descriptions, HSN, rates, GST rates, quantities, and all monetary values. The document service reconciles every line sum against the immutable header before rendering; a mismatch is an error, never a success-shaped PDF. Customer phone and item display unit are read from current masters because the schema has no historical snapshot fields for them. Authenticated invoice PDF downloads use the `invoices:read` capability; public share downloads expose only a PDF through a seven-day HS256 token and never require a login.
+
 ## Reports
 - Reports are registered definitions with a unique lowercase kebab-case key, metadata, filters, and a `run` function.
 - Each definition declares a permission capability; the catalog only lists reports the authenticated role may run.

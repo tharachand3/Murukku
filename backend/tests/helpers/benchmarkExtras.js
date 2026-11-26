@@ -1,4 +1,4 @@
-import { apiPost } from './benchmark.js';
+import { apiGet, apiPost } from './benchmark.js';
 
 function requireStatus(response, expected, label) {
   if (response.status !== expected) {
@@ -7,8 +7,18 @@ function requireStatus(response, expected, label) {
 }
 
 export async function createDistributorInvoice(app, ctx, { approvedQty = 88 } = {}) {
+  const orderResponse = await apiGet(
+    app,
+    ctx.tokens.admin,
+    `/api/orders/${ctx.ids.orderB}`
+  );
+  requireStatus(orderResponse, 200, 'Read Distributor B order for approval');
+  const line = orderResponse.body.lines?.[0];
+  if (!Number.isSafeInteger(line?.lineId)) {
+    throw new Error('Distributor B order did not return a valid lineId');
+  }
   const approval = await apiPost(app, ctx.tokens.admin, `/api/orders/${ctx.ids.orderB}/approve`, {
-    lines: [{ itemId: ctx.ids.murukku, approvedQty }]
+    lines: [{ lineId: line.lineId, approvedQty }]
   });
   requireStatus(approval, 200, 'Approve Distributor B order quantity');
   const invoice = await apiPost(app, ctx.tokens.admin, '/api/invoices', {
