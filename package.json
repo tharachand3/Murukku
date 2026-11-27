@@ -7,6 +7,9 @@
     "test:frontend": "npm --prefix frontend test",
     "db:up": "docker compose up -d db",
     "db:down": "docker compose down",
+    "docker:up": "docker compose up -d --build",
+    "docker:logs": "docker compose logs -f backend frontend",
+    "docker:smoke": "node backend/scripts/docker-smoke.js",
     "test": "npm --prefix backend test"
   }
 }

@@ -15,6 +15,41 @@ services:
       timeout: 5s
       retries: 5
 
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: "postgresql://oda:oda@db:5432/oda?schema=public"
+      JWT_SECRET: "${JWT_SECRET:-demo-only-change-me-please-123456}"
+      PORT: "4000"
+      CORS_ORIGIN: "http://localhost:${WEB_PORT:-8080}"
+      TZ: "Asia/Kolkata"
+      SEED_ON_START: "${SEED_ON_START:-true}"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4000/api/health').then(async (response) => { const body = await response.json(); if (!response.ok || !body.ok || !body.db) process.exit(1); }).catch(() => process.exit(1))"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    restart: unless-stopped
+    expose:
+      - "4000"
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
 # Backend and frontend services are added in step 58.
 volumes:
   pgdata:
