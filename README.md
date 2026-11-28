@@ -389,6 +389,4 @@ complete, as recorded in `docs/PROGRESS.md`.
 - [Deployment guide](docs/DEPLOYMENT.md)
 - [Browser benchmark checklist](docs/UI_BENCHMARK_CHECKLIST.md)
 
-Demo video: (add link)
 
-Live URL: (add link if deployed)
